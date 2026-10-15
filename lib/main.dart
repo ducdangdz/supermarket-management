@@ -1,122 +1,256 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
 
-void main() {
-  runApp(const MyApp());
+import 'auth/web_google_button.dart';
+import 'employee_workspace.dart';
+import 'management_workspace.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+
+const _googleWebClientId =
+    '1066032644057-3d0l0gkbpj6h8b9ffm2gaf04h5n21816.apps.googleusercontent.com';
+
+String get _apiBaseUrl {
+  const override = String.fromEnvironment('API_BASE_URL');
+  if (override.isNotEmpty) return override;
+  return kIsWeb
+      ? 'http://localhost:8081/api'
+      : 'http://10.0.2.2:8081/api';
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+void main() => runApp(const SmartMarketApp());
 
-  // This widget is the root of your application.
+class SmartMarketApp extends StatefulWidget {
+  const SmartMarketApp({super.key});
+
+  @override
+  State<SmartMarketApp> createState() => _SmartMarketAppState();
+}
+
+class _SmartMarketAppState extends State<SmartMarketApp> {
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _authEvents;
+  Session? _session;
+  bool _initializing = true;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeGoogle();
+  }
+
+  Future<void> _initializeGoogle() async {
+    try {
+      final signIn = GoogleSignIn.instance;
+      await signIn.initialize(
+        clientId: kIsWeb ? _googleWebClientId : null,
+        serverClientId: kIsWeb ? null : _googleWebClientId,
+      );
+      _authEvents = signIn.authenticationEvents.listen(
+        _handleAuthenticationEvent,
+        onError: (Object error) => _showError(_messageFor(error)),
+      );
+      signIn.attemptLightweightAuthentication();
+    } on Object catch (error) {
+      _error = _messageFor(error);
+    } finally {
+      if (mounted) setState(() => _initializing = false);
+    }
+  }
+
+  void _handleAuthenticationEvent(GoogleSignInAuthenticationEvent event) {
+    switch (event) {
+      case GoogleSignInAuthenticationEventSignIn(:final user):
+        _loginBackend(user);
+      case GoogleSignInAuthenticationEventSignOut():
+        if (mounted) setState(() => _session = null);
+    }
+  }
+
+  Future<void> _startNativeSignIn() async {
+    try {
+      _showError(null);
+      if (!GoogleSignIn.instance.supportsAuthenticate()) return;
+      await GoogleSignIn.instance.authenticate();
+    } on Object catch (error) {
+      _showError(_messageFor(error));
+    }
+  }
+
+  Future<void> _loginBackend(GoogleSignInAccount account) async {
+    final idToken = account.authentication.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      _showError('Không nhận được Google ID token.');
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$_apiBaseUrl/auth/google'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'idToken': idToken}),
+      );
+      final payload = _decode(response.body);
+      if (response.statusCode != 200) {
+        throw StateError(payload['message']?.toString() ?? 'Đăng nhập thất bại.');
+      }
+      if (mounted) setState(() => _session = Session.fromJson(payload, idToken));
+    } on Object catch (error) {
+      _showError(_messageFor(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showError(String? message) {
+    if (mounted) setState(() => _error = message);
+  }
+
+  Future<void> _signOut() async {
+    await GoogleSignIn.instance.signOut();
+    if (mounted) setState(() => _session = null);
+  }
+
+  @override
+  void dispose() {
+    _authEvents?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'SmartMarket HRM',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0E7C66)),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: _session == null
+          ? LoginPage(
+              initializing: _initializing,
+              loading: _loading,
+              error: _error,
+              onNativeLogin: _startNativeSignIn,
+            )
+          : _session!.roleCode == 'EMPLOYEE'
+              ? EmployeeWorkspace(
+              employeeId: _session!.employeeId,
+              idToken: _session!.idToken,
+              fullName: _session!.fullName,
+              email: _session!.email,
+              roleCode: _session!.roleCode,
+              roleName: _session!.roleName,
+              onLogout: _signOut,
+            )
+              : ManagementWorkspace(
+                  idToken: _session!.idToken,
+                  fullName: _session!.fullName,
+                  roleCode: _session!.roleCode,
+                  onLogout: _signOut,
+                ),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class LoginPage extends StatelessWidget {
+  const LoginPage({
+    super.key,
+    required this.initializing,
+    required this.loading,
+    required this.error,
+    required this.onNativeLogin,
+  });
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  final bool initializing;
+  final bool loading;
+  final String? error;
+  final Future<void> Function() onNativeLogin;
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 390),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.storefront_rounded,
+                    size: 74, color: Color(0xFF0E7C66)),
+                const SizedBox(height: 20),
+                Text('SmartMarket HRM',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Quản lý nhân sự và chấm công',
+                    textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
+                const SizedBox(height: 36),
+                if (initializing)
+                  const Center(child: CircularProgressIndicator())
+                else if (kIsWeb)
+                  Center(child: webGoogleSignInButton())
+                else
+                  FilledButton.icon(
+                    onPressed: loading ? null : onNativeLogin,
+                    icon: loading
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.login),
+                    label: Text(loading ? 'Đang đăng nhập...' : 'Đăng nhập với Google'),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                  ),
+                if (loading) ...[
+                  const SizedBox(height: 16),
+                  const Center(child: CircularProgressIndicator()),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 16),
+                  Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+                ],
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
+}
+
+class Session {
+  const Session({required this.employeeId, required this.idToken, required this.fullName, required this.email, required this.roleCode, required this.roleName});
+  factory Session.fromJson(Map<String, dynamic> json, String idToken) => Session(
+      employeeId: (json['employeeId'] as num?)?.toInt() ?? 0,
+      idToken: idToken,
+      fullName: json['fullName']?.toString() ?? 'Người dùng',
+      email: json['email']?.toString() ?? '',
+      roleCode: json['roleCode']?.toString() ?? '',
+      roleName: json['roleName']?.toString() ?? '');
+  final int employeeId;
+  final String idToken;
+  final String fullName;
+  final String email;
+  final String roleCode;
+  final String roleName;
+}
+
+Map<String, dynamic> _decode(String body) {
+  final value = jsonDecode(body);
+  return value is Map<String, dynamic> ? value : <String, dynamic>{};
+}
+
+String _messageFor(Object error) {
+  final message = error.toString().replaceFirst('Bad state: ', '');
+  if (message.contains('SocketException')) return 'Không kết nối được backend tại $_apiBaseUrl.';
+  return message;
 }

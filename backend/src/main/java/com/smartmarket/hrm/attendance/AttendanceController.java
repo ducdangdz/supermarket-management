@@ -65,6 +65,7 @@ public class AttendanceController {
         access.requireSelfOrStaff(request, body.employeeId());
         Map<String, Object> schedule = schedule(body.scheduleId(), body.employeeId());
         if (!"SCHEDULED".equals(schedule.get("schedule_status"))) throw new IllegalArgumentException("Lịch làm này không còn hiệu lực.");
+        requireLocationIfNeeded(schedule, body.latitude(), body.longitude());
         if (jdbc.queryForObject("SELECT COUNT(*) FROM dbo.attendance_records WHERE schedule_id = ?", Integer.class, body.scheduleId()) > 0)
             throw new IllegalArgumentException("Lịch làm này đã được check-in.");
 
@@ -88,6 +89,7 @@ public class AttendanceController {
     public AttendanceResponse checkOut(@Valid @RequestBody CheckOutRequest body, HttpServletRequest request) {
         access.requireSelfOrStaff(request, body.employeeId());
         Map<String, Object> schedule = schedule(body.scheduleId(), body.employeeId());
+        requireLocationIfNeeded(schedule, body.latitude(), body.longitude());
         Map<String, Object> attendance = jdbc.queryForMap("""
                 SELECT attendance_id, check_in_at, check_out_at FROM dbo.attendance_records
                 WHERE schedule_id = ? AND employee_id = ?
@@ -122,13 +124,18 @@ public class AttendanceController {
     private Map<String, Object> schedule(Long scheduleId, Long employeeId) {
         List<Map<String, Object>> records = jdbc.queryForList("""
                 SELECT ws.schedule_status, ws.work_date, ws.shift_id, ws.work_area_id,
-                       sh.start_time, sh.allowed_late_minutes, sh.require_qr
+                       sh.start_time, sh.allowed_late_minutes, sh.require_qr, sh.require_location
                 FROM dbo.work_schedules ws
                 JOIN dbo.shifts sh ON sh.shift_id = ws.shift_id
                 WHERE ws.schedule_id = ? AND ws.employee_id = ?
                 """, scheduleId, employeeId);
         if (records.isEmpty()) throw new IllegalArgumentException("Không tìm thấy lịch làm của nhân viên.");
-        return records.getFirst();
+        Map<String, Object> schedule = records.getFirst();
+        LocalDate workDate = ((java.sql.Date) schedule.get("work_date")).toLocalDate();
+        if (!LocalDate.now().equals(workDate)) {
+            throw new IllegalArgumentException("Chỉ có thể chấm công trong ngày làm việc đã được phân công.");
+        }
+        return schedule;
     }
 
     private Long validateQr(Map<String, Object> schedule, String type, String token) {
@@ -142,6 +149,12 @@ public class AttendanceController {
                 """, (rs, row) -> rs.getLong(1), schedule.get("shift_id"), schedule.get("work_area_id"), type, sha256(token));
         if (sessions.isEmpty()) throw new IllegalArgumentException("Mã QR không hợp lệ, đã hết hạn hoặc không thuộc khu vực này.");
         return sessions.getFirst();
+    }
+
+    private void requireLocationIfNeeded(Map<String, Object> schedule, Double latitude, Double longitude) {
+        if (Boolean.TRUE.equals(schedule.get("require_location")) && (latitude == null || longitude == null)) {
+            throw new IllegalArgumentException("Ca làm này yêu cầu bật vị trí GPS khi chấm công.");
+        }
     }
 
     private void requireCount(String sql, Long id, String message) {

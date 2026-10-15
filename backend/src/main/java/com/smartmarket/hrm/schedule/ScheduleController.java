@@ -37,7 +37,7 @@ public class ScheduleController {
 
         String sql = """
                 SELECT ws.schedule_id, ws.work_date, ws.schedule_status,
-                       sh.shift_id, sh.shift_name, sh.start_time, sh.end_time,
+                       sh.shift_id, sh.shift_name, sh.start_time, sh.end_time, sh.require_location,
                        wa.work_area_id, wa.area_name, fp.floor_name,
                        ar.attendance_id, ar.attendance_status, ar.check_in_at, ar.check_out_at
                 FROM dbo.work_schedules ws
@@ -52,6 +52,7 @@ public class ScheduleController {
                 rs.getLong("schedule_id"), rs.getDate("work_date").toLocalDate(),
                 rs.getString("schedule_status"), rs.getLong("shift_id"), rs.getString("shift_name"),
                 rs.getTime("start_time").toLocalTime(), rs.getTime("end_time").toLocalTime(),
+                rs.getBoolean("require_location"),
                 rs.getLong("work_area_id"), rs.getString("area_name"), rs.getString("floor_name"),
                 (Long) rs.getObject("attendance_id"), rs.getString("attendance_status"),
                 rs.getTimestamp("check_in_at") == null ? null : rs.getTimestamp("check_in_at").toLocalDateTime(),
@@ -61,6 +62,7 @@ public class ScheduleController {
 
     public record ScheduleResponse(Long scheduleId, LocalDate workDate, String scheduleStatus,
             Long shiftId, String shiftName, LocalTime startTime, LocalTime endTime,
+            boolean requireLocation,
             Long workAreaId, String areaName, String floorName, Long attendanceId,
             String attendanceStatus, LocalDateTime checkInAt, LocalDateTime checkOutAt) { }
 }

@@ -1,5 +1,8 @@
 package com.smartmarket.hrm.management;
 
+import com.smartmarket.hrm.auth.AccessControl;
+import com.smartmarket.hrm.auth.CurrentUser;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -25,8 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/management")
 public class ManagementController {
     private final JdbcTemplate jdbc;
+    private final AccessControl access;
 
-    public ManagementController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public ManagementController(JdbcTemplate jdbc, AccessControl access) {
+        this.jdbc = jdbc;
+        this.access = access;
+    }
 
     @PostMapping("/employees")
     public ResponseEntity<Map<String, Object>> createEmployee(@Valid @RequestBody EmployeeRequest body) {
@@ -62,6 +69,18 @@ public class ManagementController {
         return jdbc.queryForList("SELECT shift_id, branch_id, shift_code, shift_name, start_time, end_time, require_qr, require_evidence, require_location FROM dbo.shifts WHERE is_active = 1 ORDER BY branch_id, start_time");
     }
 
+    @GetMapping("/work-areas")
+    public List<Map<String, Object>> workAreas() {
+        return jdbc.queryForList("""
+                SELECT wa.work_area_id, wa.area_code, wa.area_name, wa.max_employees,
+                       fp.floor_plan_id, fp.floor_name, fp.floor_number, fp.branch_id
+                FROM dbo.work_areas wa
+                JOIN dbo.floor_plans fp ON fp.floor_plan_id = wa.floor_plan_id
+                WHERE wa.is_active = 1 AND fp.is_active = 1
+                ORDER BY fp.branch_id, fp.floor_number, wa.area_name
+                """);
+    }
+
     @PostMapping("/shifts")
     public ResponseEntity<Map<String, Object>> createShift(@Valid @RequestBody ShiftRequest body) {
         if (body.startTime().equals(body.endTime())) throw new IllegalArgumentException("Giờ bắt đầu và kết thúc không được giống nhau.");
@@ -74,41 +93,41 @@ public class ManagementController {
 
     @PostMapping("/schedules")
     @Transactional
-    public ResponseEntity<Map<String, Object>> createSchedule(@Valid @RequestBody ScheduleRequest body) {
-        Map<String, Object> data = jdbc.queryForMap("""
-                SELECT e.employment_status, e.branch_id AS employee_branch_id,
-                       sh.branch_id AS shift_branch_id, sh.start_time, sh.end_time,
-                       wa.max_employees, fp.branch_id AS area_branch_id
+    public ResponseEntity<Map<String, Object>> createSchedule(@Valid @RequestBody ScheduleRequest body,
+            HttpServletRequest request) {
+        Integer compatible = jdbc.queryForObject("""
+                SELECT COUNT(*)
                 FROM dbo.employees e
-                JOIN dbo.shifts sh ON sh.shift_id = ?
-                JOIN dbo.work_areas wa ON wa.work_area_id = ?
-                JOIN dbo.floor_plans fp ON fp.floor_plan_id = wa.floor_plan_id
-                WHERE e.employee_id = ?
-                """, body.shiftId(), body.workAreaId(), body.employeeId());
-        if (!"ACTIVE".equals(data.get("employment_status"))) throw new IllegalArgumentException("Chỉ có thể xếp lịch cho nhân viên ACTIVE.");
-        if (!data.get("employee_branch_id").equals(data.get("shift_branch_id")) || !data.get("employee_branch_id").equals(data.get("area_branch_id")))
-            throw new IllegalArgumentException("Nhân viên, ca làm và khu vực phải thuộc cùng một chi nhánh.");
+                JOIN dbo.shifts sh ON sh.shift_id = ? AND sh.is_active = 1
+                JOIN dbo.work_areas wa ON wa.work_area_id = ? AND wa.is_active = 1
+                JOIN dbo.floor_plans fp ON fp.floor_plan_id = wa.floor_plan_id AND fp.is_active = 1
+                WHERE e.employee_id = ? AND e.employment_status = 'ACTIVE'
+                  AND e.branch_id = sh.branch_id AND e.branch_id = fp.branch_id
+                """, Integer.class, body.shiftId(), body.workAreaId(), body.employeeId());
+        if (compatible == null || compatible == 0) {
+            throw new IllegalArgumentException("Nhân viên, ca làm và khu vực phải đang hoạt động và thuộc cùng một chi nhánh.");
+        }
 
-        LocalTime start = ((java.sql.Time) data.get("start_time")).toLocalTime();
-        LocalTime end = ((java.sql.Time) data.get("end_time")).toLocalTime();
         Integer overlaps = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM dbo.work_schedules ws
                 JOIN dbo.shifts existing ON existing.shift_id = ws.shift_id
                 WHERE ws.employee_id = ? AND ws.work_date = ? AND ws.schedule_status = 'SCHEDULED'
-                  AND NOT (existing.end_time <= ? OR existing.start_time >= ?)
-                """, Integer.class, body.employeeId(), body.workDate(), start, end);
+                  AND NOT (existing.end_time <= (SELECT start_time FROM dbo.shifts WHERE shift_id = ?)
+                       OR existing.start_time >= (SELECT end_time FROM dbo.shifts WHERE shift_id = ?))
+                """, Integer.class, body.employeeId(), body.workDate(), body.shiftId(), body.shiftId());
         if (overlaps != null && overlaps > 0) throw new IllegalArgumentException("Nhân viên đã có ca trùng thời gian trong ngày này.");
 
-        Number max = (Number) data.get("max_employees");
+        Integer max = jdbc.queryForObject("SELECT max_employees FROM dbo.work_areas WHERE work_area_id = ?", Integer.class, body.workAreaId());
         if (max != null) {
             Integer assigned = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM dbo.work_schedules
                     WHERE shift_id = ? AND work_area_id = ? AND work_date = ? AND schedule_status = 'SCHEDULED'
                     """, Integer.class, body.shiftId(), body.workAreaId(), body.workDate());
-            if (assigned != null && assigned >= max.intValue()) throw new IllegalArgumentException("Khu vực này đã đủ số nhân viên cho ca được chọn.");
+            if (assigned != null && assigned >= max) throw new IllegalArgumentException("Khu vực này đã đủ số nhân viên cho ca được chọn.");
         }
+        CurrentUser current = access.current(request);
         jdbc.update("INSERT INTO dbo.work_schedules (employee_id, shift_id, work_area_id, work_date, assigned_by) VALUES (?, ?, ?, ?, ?)",
-                body.employeeId(), body.shiftId(), body.workAreaId(), body.workDate(), body.assignedBy());
+                body.employeeId(), body.shiftId(), body.workAreaId(), body.workDate(), current.employeeId());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("created", true));
     }
 
@@ -124,5 +143,5 @@ public class ManagementController {
             @NotNull LocalTime startTime, @NotNull LocalTime endTime, boolean requireQr,
             boolean requireEvidence, boolean requireLocation) { }
     public record ScheduleRequest(@NotNull Long employeeId, @NotNull Long shiftId, @NotNull Long workAreaId,
-            @NotNull LocalDate workDate, Long assignedBy) { }
+            @NotNull LocalDate workDate) { }
 }
