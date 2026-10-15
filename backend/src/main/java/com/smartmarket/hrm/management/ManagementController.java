@@ -81,6 +81,28 @@ public class ManagementController {
                 """);
     }
 
+    @GetMapping("/schedules")
+    public List<Map<String, Object>> schedules(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) LocalDate from,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) LocalDate to) {
+        LocalDate start = from == null ? LocalDate.now() : from;
+        LocalDate end = to == null ? start.plusDays(30) : to;
+        if (end.isBefore(start)) throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu.");
+        return jdbc.queryForList("""
+                SELECT ws.schedule_id, ws.work_date, ws.schedule_status,
+                       e.employee_code, e.full_name,
+                       sh.shift_name, sh.start_time, sh.end_time,
+                       wa.area_name, fp.floor_name
+                FROM dbo.work_schedules ws
+                JOIN dbo.employees e ON e.employee_id = ws.employee_id
+                JOIN dbo.shifts sh ON sh.shift_id = ws.shift_id
+                JOIN dbo.work_areas wa ON wa.work_area_id = ws.work_area_id
+                JOIN dbo.floor_plans fp ON fp.floor_plan_id = wa.floor_plan_id
+                WHERE ws.work_date BETWEEN ? AND ?
+                ORDER BY ws.work_date, sh.start_time, e.full_name
+                """, start, end);
+    }
+
     @PostMapping("/shifts")
     public ResponseEntity<Map<String, Object>> createShift(@Valid @RequestBody ShiftRequest body) {
         if (body.startTime().equals(body.endTime())) throw new IllegalArgumentException("Giờ bắt đầu và kết thúc không được giống nhau.");
@@ -129,6 +151,22 @@ public class ManagementController {
         jdbc.update("INSERT INTO dbo.work_schedules (employee_id, shift_id, work_area_id, work_date, assigned_by) VALUES (?, ?, ?, ?, ?)",
                 body.employeeId(), body.shiftId(), body.workAreaId(), body.workDate(), current.employeeId());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("created", true));
+    }
+
+    @PatchMapping("/schedules/{scheduleId}/cancel")
+    @Transactional
+    public Map<String, Object> cancelSchedule(@PathVariable Long scheduleId) {
+        int count = jdbc.update("""
+                UPDATE ws
+                SET schedule_status = 'CANCELLED'
+                FROM dbo.work_schedules ws
+                WHERE ws.schedule_id = ? AND ws.schedule_status = 'SCHEDULED'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.attendance_records ar WHERE ar.schedule_id = ws.schedule_id)
+                """, scheduleId);
+        if (count == 0) {
+            throw new IllegalArgumentException("Không thể hủy lịch này vì lịch không tồn tại, đã hủy hoặc đã phát sinh chấm công.");
+        }
+        return Map.of("cancelled", true, "scheduleId", scheduleId);
     }
 
     private void requireCount(String sql, Long id, String message) {
