@@ -1,0 +1,21 @@
+server:
+  port: ${SERVER_PORT:8080}
+spring:
+  application:
+    name: smartmarket-hrm-api
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST:localhost}:${DB_PORT:1433};databaseName=${DB_NAME:smartmarket_hrm};encrypt=true;trustServerCertificate=true
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  sql:
+    init:
+      mode: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+app:
+  auth:
+    google-client-id: ${GOOGLE_CLIENT_ID:}
