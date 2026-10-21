@@ -92,7 +92,7 @@ class _ReportsMainScreenState extends State<ReportsMainScreen>
                                 label: Text(role),
                                 selected: isSelected,
                                 selectedColor: AppColors.secondary,
-                                backgroundColor: Colors.white.withOpacity(0.12),
+                                backgroundColor: Colors.white.withValues(alpha: 0.12),
                                 labelStyle: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,

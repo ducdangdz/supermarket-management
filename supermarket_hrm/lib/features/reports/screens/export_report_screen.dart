@@ -101,7 +101,7 @@ class _ExportReportScreenState extends State<ExportReportScreen> {
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<int?>(
-                          value: _selectedEmployeeId,
+                          initialValue: _selectedEmployeeId,
                           isExpanded: true,
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -122,7 +122,7 @@ class _ExportReportScreenState extends State<ExportReportScreen> {
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _reportType,
+                          initialValue: _reportType,
                           isExpanded: true,
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

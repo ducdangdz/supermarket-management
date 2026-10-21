@@ -121,7 +121,7 @@ class _LateAbsentReportScreenState extends State<LateAbsentReportScreen>
             border: Border.all(color: const Color(0xFFFDE68A)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withValues(alpha: 0.02),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -331,7 +331,7 @@ class _LateAbsentReportScreenState extends State<LateAbsentReportScreen>
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: badgeColor.withOpacity(0.15),
+                  color: badgeColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,

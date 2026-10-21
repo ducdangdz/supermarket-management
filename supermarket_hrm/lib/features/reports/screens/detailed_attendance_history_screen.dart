@@ -126,7 +126,7 @@ class _DetailedAttendanceHistoryScreenState
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int?>(
-                    value: _managerSelectedEmployeeId,
+                    initialValue: _managerSelectedEmployeeId,
                     isExpanded: true,
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(
