@@ -2,8 +2,15 @@ class AppConstants {
   AppConstants._();
 
   // ─── API ────────────────────────────────────────────────────────────────────
-  /// Thay bằng base URL thực của nhóm
-  static const String baseUrl = 'https://api.supermarket-hrm.com/v1';
+  /// Base URL backend, truyền khi chạy:
+  /// `flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api`
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://api.supermarket-hrm.com/v1',
+  );
+
+  /// Không truyền API_BASE_URL → chấm công chạy bằng dữ liệu giả lập (mock) để demo không cần backend.
+  static const bool useMockApi = String.fromEnvironment('API_BASE_URL') == '';
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 30);
 

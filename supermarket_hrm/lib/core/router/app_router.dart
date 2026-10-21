@@ -8,7 +8,8 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/schedules/presentation/schedules_screen.dart';
 import '../../features/schedules/presentation/schedule_detail_screen.dart';
 import '../../features/attendance_history/presentation/attendance_history_screen.dart';
-import '../../features/qr_checkin/presentation/qr_checkin_screen.dart';
+import '../../features/attendance/check_in_page.dart';
+import '../../features/attendance/check_out_page.dart';
 import '../../navigation/employee_shell.dart';
 
 class AppRouter {
@@ -40,11 +41,25 @@ class AppRouter {
           name: 'login',
           builder: (context, state) => const LoginScreen(),
         ),
+        // Chấm công QR + GPS + ảnh bằng chứng (features/attendance).
+        // '/qr-checkin' giữ lại để không vỡ link cũ, trỏ sang màn hình check-in mới.
         GoRoute(
           path: '/qr-checkin',
           name: 'qr-checkin',
           parentNavigatorKey: _rootNavigatorKey,
-          builder: (context, state) => const QrCheckinScreen(),
+          builder: (context, state) => const CheckInPage(),
+        ),
+        GoRoute(
+          path: '/attendance/check-in',
+          name: 'attendance-check-in',
+          parentNavigatorKey: _rootNavigatorKey,
+          builder: (context, state) => const CheckInPage(),
+        ),
+        GoRoute(
+          path: '/attendance/check-out',
+          name: 'attendance-check-out',
+          parentNavigatorKey: _rootNavigatorKey,
+          builder: (context, state) => const CheckOutPage(),
         ),
         ShellRoute(
           navigatorKey: _shellNavigatorKey,

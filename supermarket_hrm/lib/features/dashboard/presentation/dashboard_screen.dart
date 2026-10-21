@@ -29,6 +29,15 @@ class _DashboardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<DashboardController>();
+    final today = ctrl.todaySchedule;
+    // Đã check-in mà chưa check-out → nút nổi chuyển sang check-out.
+    final canCheckOut = today?.checkInTime != null && today?.checkOutTime == null;
+
+    // Mở màn hình chấm công; tải lại dashboard khi chấm công thành công.
+    Future<void> openAttendance(String path) async {
+      final updated = await context.push<bool>(path);
+      if (updated == true) ctrl.loadDashboard();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -45,13 +54,8 @@ class _DashboardContent extends StatelessWidget {
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('Quét QR Chấm Công'),
-        onPressed: () async {
-          final updated = await context.push<bool>('/qr-checkin');
-          if (updated == true) {
-            ctrl.loadDashboard();
-          }
-        },
+        label: Text(canCheckOut ? 'Quét QR Check-out' : 'Quét QR Check-in'),
+        onPressed: () => openAttendance(canCheckOut ? '/attendance/check-out' : '/attendance/check-in'),
       ),
       body: Builder(
         builder: (_) {
@@ -198,6 +202,27 @@ class _DashboardContent extends StatelessWidget {
                               ],
                             ),
                           ],
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () => openAttendance('/attendance/check-in'),
+                                  icon: const Icon(Icons.login),
+                                  label: const Text('Check-in'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => openAttendance('/attendance/check-out'),
+                                  icon: const Icon(Icons.logout),
+                                  label: const Text('Check-out'),
+                                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -214,18 +239,22 @@ class _DashboardContent extends StatelessWidget {
                 Card(
                   child: ListTile(
                     leading: Icon(
-                      schedule?.status == 'CHECKED_IN' ? Icons.check_circle : Icons.access_time,
-                      color: schedule?.status == 'CHECKED_IN' ? AppTheme.success : AppTheme.warning,
+                      schedule?.checkInTime != null ? Icons.check_circle : Icons.access_time,
+                      color: schedule?.checkInTime != null ? AppTheme.success : AppTheme.warning,
                       size: 32,
                     ),
                     title: Text(
-                      schedule?.status == 'CHECKED_IN' ? 'Đã điểm danh vào ca' : 'Chưa điểm danh vào ca',
+                      schedule?.checkOutTime != null
+                          ? 'Đã hoàn thành ca làm'
+                          : schedule?.checkInTime != null
+                              ? 'Đã điểm danh vào ca'
+                              : 'Chưa điểm danh vào ca',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     subtitle: Text(
-                      schedule?.status == 'CHECKED_IN'
-                          ? 'Đã ghi nhận vị trí & hình ảnh xác thực'
-                          : 'Bấm nút "Quét QR Chấm Công" bên dưới để điểm danh',
+                      schedule?.checkInTime != null
+                          ? 'Đã ghi nhận QR, vị trí GPS & ảnh xác thực'
+                          : 'Bấm nút "Quét QR Check-in" bên dưới để điểm danh',
                     ),
                   ),
                 ),
