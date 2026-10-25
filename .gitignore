@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated output in platform folders
+**/build/
+**/.dart_tool/
+**/.gradle/

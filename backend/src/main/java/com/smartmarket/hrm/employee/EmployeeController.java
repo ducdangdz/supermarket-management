@@ -23,7 +23,9 @@ public class EmployeeController {
     }
 
     @GetMapping
-    public List<EmployeeResponse> findAll(@RequestParam(required = false) Long branchId) {
+    public List<EmployeeResponse> findAll(@RequestParam(required = false) Long branchId,HttpServletRequest request) {
+        access.requireStaff(request);
+        if(!access.current(request).roleCode().equals("ADMIN"))branchId=access.current(request).branchId()==null?-1L:access.current(request).branchId();
         String sql = """
                 SELECT e.employee_id, e.employee_code, e.full_name, e.email, e.phone,
                        e.employment_status, r.role_code, r.role_name, b.branch_id, b.branch_name
@@ -38,7 +40,7 @@ public class EmployeeController {
 
     @GetMapping("/{employeeId}")
     public EmployeeResponse findById(@PathVariable Long employeeId, HttpServletRequest request) {
-        access.requireSelfOrStaff(request, employeeId);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbcTemplate,access).readEmployee(request,employeeId);
         String sql = """
                 SELECT e.employee_id, e.employee_code, e.full_name, e.email, e.phone,
                        e.employment_status, r.role_code, r.role_name, b.branch_id, b.branch_name
@@ -56,7 +58,7 @@ public class EmployeeController {
         return (rs, rowNum) -> new EmployeeResponse(
                 rs.getLong("employee_id"), rs.getString("employee_code"), rs.getString("full_name"),
                 rs.getString("email"), rs.getString("phone"), rs.getString("employment_status"),
-                rs.getString("role_code"), rs.getString("role_name"), (Long) rs.getObject("branch_id"),
+                rs.getString("role_code"), rs.getString("role_name"), rs.getObject("branch_id") == null ? null : ((Number) rs.getObject("branch_id")).longValue(),
                 rs.getString("branch_name"));
     }
 

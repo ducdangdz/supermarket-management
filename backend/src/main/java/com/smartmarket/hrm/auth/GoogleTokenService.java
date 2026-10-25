@@ -45,7 +45,7 @@ public class GoogleTokenService {
                 """, (rs, row) -> new CurrentUser(
                 rs.getLong("employee_id"), rs.getString("employee_code"), rs.getString("full_name"),
                 rs.getString("email"), rs.getString("role_code"), rs.getString("role_name"),
-                (Long) rs.getObject("branch_id")), email);
+                rs.getObject("branch_id") == null ? null : ((Number) rs.getObject("branch_id")).longValue()), email);
         if (users.isEmpty()) throw new IllegalArgumentException("Tài khoản Google này chưa được cấp quyền trong hệ thống.");
         return users.getFirst();
     }

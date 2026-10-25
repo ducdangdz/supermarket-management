@@ -15,7 +15,7 @@ public class AccessControl {
     public CurrentUser current(HttpServletRequest request) {
         Object value = request.getAttribute(CURRENT_USER);
         if (value instanceof CurrentUser user) return user;
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bạn cần đăng nhập Google.");
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bạn cần đăng nhập.");
     }
 
     public void requireStaff(HttpServletRequest request) {

@@ -42,6 +42,8 @@ public class AttendanceController {
 
     @PostMapping("/management/qr-sessions")
     public ResponseEntity<QrSessionResponse> createQrSession(@Valid @RequestBody QrSessionRequest body, HttpServletRequest request) {
+        access.requireManagerOrAdmin(request);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbc,access).shift(request,body.shiftId());
         requireCount("SELECT COUNT(*) FROM dbo.shifts WHERE shift_id = ? AND is_active = 1", body.shiftId(), "Ca làm không tồn tại.");
         requireCount("SELECT COUNT(*) FROM dbo.work_areas WHERE work_area_id = ? AND is_active = 1", body.workAreaId(), "Khu vực không tồn tại.");
         if (!List.of("CHECK_IN", "CHECK_OUT").contains(body.sessionType())) throw new IllegalArgumentException("sessionType phải là CHECK_IN hoặc CHECK_OUT.");
@@ -62,7 +64,7 @@ public class AttendanceController {
     @PostMapping("/attendance/check-in")
     @Transactional
     public ResponseEntity<AttendanceResponse> checkIn(@Valid @RequestBody CheckInRequest body, HttpServletRequest request) {
-        access.requireSelfOrStaff(request, body.employeeId());
+        if(!access.current(request).employeeId().equals(body.employeeId())) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,"Chỉ được chấm công cho chính tài khoản đang đăng nhập.");
         Map<String, Object> schedule = schedule(body.scheduleId(), body.employeeId());
         if (!"SCHEDULED".equals(schedule.get("schedule_status"))) throw new IllegalArgumentException("Lịch làm này không còn hiệu lực.");
         requireLocationIfNeeded(schedule, body.latitude(), body.longitude());
@@ -87,7 +89,7 @@ public class AttendanceController {
     @PostMapping("/attendance/check-out")
     @Transactional
     public AttendanceResponse checkOut(@Valid @RequestBody CheckOutRequest body, HttpServletRequest request) {
-        access.requireSelfOrStaff(request, body.employeeId());
+        if(!access.current(request).employeeId().equals(body.employeeId())) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,"Chỉ được chấm công cho chính tài khoản đang đăng nhập.");
         Map<String, Object> schedule = schedule(body.scheduleId(), body.employeeId());
         requireLocationIfNeeded(schedule, body.latitude(), body.longitude());
         Map<String, Object> attendance = jdbc.queryForMap("""
@@ -108,7 +110,7 @@ public class AttendanceController {
 
     @GetMapping("/attendance/employees/{employeeId}/history")
     public List<Map<String, Object>> history(@PathVariable Long employeeId, HttpServletRequest request) {
-        access.requireSelfOrStaff(request, employeeId);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbc,access).readEmployee(request,employeeId);
         return jdbc.queryForList("""
                 SELECT ar.attendance_id, ws.work_date, sh.shift_name, wa.area_name,
                        ar.check_in_at, ar.check_out_at, ar.attendance_status, ar.verification_status
