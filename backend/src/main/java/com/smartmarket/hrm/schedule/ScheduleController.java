@@ -30,7 +30,7 @@ public class ScheduleController {
             @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to,
             HttpServletRequest request) {
-        access.requireSelfOrStaff(request, employeeId);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbcTemplate,access).readEmployee(request,employeeId);
         LocalDate start = from == null ? LocalDate.now().withDayOfMonth(1) : from;
         LocalDate end = to == null ? start.plusMonths(1).minusDays(1) : to;
         if (end.isBefore(start)) throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu.");

@@ -19,6 +19,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/uploads/evidence/**").allowedOriginPatterns("http://localhost:*","http://127.0.0.1:*").allowedMethods("GET","OPTIONS").allowedHeaders("Authorization");
         registry.addMapping("/api/**")
                 .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
@@ -27,14 +28,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor).addPathPatterns("/api/**");
+        registry.addInterceptor(authInterceptor).addPathPatterns("/api/**","/uploads/evidence/**");
     }
 
-    /** Cho phép xem ảnh bằng chứng đã upload qua /uploads/evidence/{hash}.jpg. */
-    @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = evidenceStorage.root().toUri().toString();
-        registry.addResourceHandler(EvidenceStorage.PUBLIC_PREFIX + "**")
-                .addResourceLocations(location.endsWith("/") ? location : location + "/");
-    }
 }

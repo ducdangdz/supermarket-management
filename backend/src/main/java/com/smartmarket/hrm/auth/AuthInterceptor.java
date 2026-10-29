@@ -12,22 +12,30 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuthInterceptor implements HandlerInterceptor {
     private final GoogleTokenService tokens;
     private final AccessControl access;
+    private final AccountAuthService accounts;
 
-    public AuthInterceptor(GoogleTokenService tokens, AccessControl access) {
+    public AuthInterceptor(GoogleTokenService tokens, AccessControl access, AccountAuthService accounts) {
         this.tokens = tokens;
         this.access = access;
+        this.accounts = accounts;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String path = request.getRequestURI();
-        if ("OPTIONS".equals(request.getMethod()) || "/api/health".equals(path) || "/api/auth/google".equals(path)) return true;
+        if ("OPTIONS".equals(request.getMethod()) || "/api/health".equals(path) || java.util.Set.of("/api/auth/google", "/api/auth/login", "/api/auth/register", "/api/auth/verify-registration", "/api/auth/forgot-password", "/api/auth/reset-password").contains(path)) return true;
 
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu Authorization: Bearer <Google ID token>.");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu thông tin phiên đăng nhập.");
         }
-        CurrentUser user = tokens.authenticate(header.substring(7));
+        String token = header.substring(7);
+        CurrentUser user;
+        try {
+            user = token.startsWith("smh_") ? accounts.authenticate(token) : tokens.authenticate(token);
+        } catch (org.springframework.security.oauth2.jwt.JwtException | IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ.");
+        }
         request.setAttribute(AccessControl.CURRENT_USER, user);
 
         if (path.startsWith("/api/management/qr-sessions")) {
@@ -40,3 +48,4 @@ public class AuthInterceptor implements HandlerInterceptor {
         return true;
     }
 }
+

@@ -43,10 +43,22 @@
 					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
-				</dict>
+					<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
+</dict>
 			</array>
-		</dict>
-	</dict>
+			<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
+</dict>
+		<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
+</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -66,5 +78,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
 </dict>
 </plist>

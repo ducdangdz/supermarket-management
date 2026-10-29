@@ -86,6 +86,8 @@ public class AttendanceController {
 
     @PostMapping("/management/qr-sessions")
     public ResponseEntity<QrSessionResponse> createQrSession(@Valid @RequestBody QrSessionRequest body, HttpServletRequest request) {
+        access.requireManagerOrAdmin(request);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbc,access).shift(request,body.shiftId());
         requireCount("SELECT COUNT(*) FROM dbo.shifts WHERE shift_id = ? AND is_active = 1", body.shiftId(), "Ca làm không tồn tại.");
         requireCount("SELECT COUNT(*) FROM dbo.work_areas WHERE work_area_id = ? AND is_active = 1", body.workAreaId(), "Khu vực không tồn tại.");
         if (!List.of(CHECK_IN, CHECK_OUT).contains(body.sessionType())) throw new IllegalArgumentException("sessionType phải là CHECK_IN hoặc CHECK_OUT.");
@@ -130,8 +132,10 @@ public class AttendanceController {
     /** Upload ảnh bằng chứng (multipart, field "file"). Trả về fileHash để gửi kèm khi check-in/check-out. */
     @PostMapping(value = "/attendance/evidence", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EvidenceStorage.StoredEvidence> uploadEvidence(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
-        access.current(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(storage.store(file));
+        CurrentUser user=access.current(request);
+        var evidence=storage.store(file);
+        storage.registerOwner(evidence.fileHash(),user.employeeId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(evidence);
     }
 
     @PostMapping("/attendance/check-in")
@@ -148,7 +152,7 @@ public class AttendanceController {
 
     @GetMapping("/attendance/employees/{employeeId}/history")
     public List<Map<String, Object>> history(@PathVariable Long employeeId, HttpServletRequest request) {
-        access.requireSelfOrStaff(request, employeeId);
+        new com.smartmarket.hrm.auth.StaffPolicy(jdbc,access).readEmployee(request,employeeId);
         return jdbc.queryForList("""
                 SELECT ar.attendance_id, ws.work_date, sh.shift_name, wa.area_name,
                        ar.check_in_at, ar.check_out_at, ar.attendance_status, ar.verification_status
@@ -167,7 +171,8 @@ public class AttendanceController {
         CurrentUser current = access.current(request);
         // employeeId có thể bỏ trống: mặc định là người đang đăng nhập.
         Long employeeId = body.employeeId() == null ? current.employeeId() : body.employeeId();
-        access.requireSelfOrStaff(request, employeeId);
+        if(!current.employeeId().equals(employeeId))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,"Chỉ được chấm công cho chính tài khoản đang đăng nhập.");
         LocalDateTime now = LocalDateTime.now();
 
         QrSession qr = findQr(body.qrToken(), type, now);
@@ -207,7 +212,7 @@ public class AttendanceController {
         }
 
         Double distance = checkLocation(schedule, body);
-        String evidenceUrl = checkEvidence(schedule, body);
+        String evidenceUrl = checkEvidence(schedule, body, current.employeeId());
         String note = buildNote(type, body);
 
         Long attendanceId;
@@ -337,7 +342,7 @@ public class AttendanceController {
     }
 
     /** Kiểm tra ảnh bằng chứng; trả về URL ảnh nếu có. */
-    private String checkEvidence(Map<String, Object> schedule, AttendanceRequest body) {
+    private String checkEvidence(Map<String, Object> schedule, AttendanceRequest body,Long employeeId) {
         String hash = body.evidence() == null ? null : body.evidence().fileHash();
         if (hash == null || hash.isBlank()) {
             if (flag(schedule.get("require_evidence"))) {
@@ -345,6 +350,7 @@ public class AttendanceController {
             }
             return null;
         }
+        if(!storage.uploadedBy(hash.trim(),employeeId))throw new AttendanceException("EVIDENCE_NOT_OWNED","Ảnh này chưa được tải lên bởi tài khoản đang đăng nhập. Hãy chụp và tải lại.");
         String url = storage.findUrl(hash.trim()).orElseThrow(() ->
                 new AttendanceException("EVIDENCE_NOT_FOUND", "Không tìm thấy ảnh bằng chứng đã upload. Hãy chụp lại."));
         Integer used = jdbc.queryForObject("SELECT COUNT(*) FROM dbo.attendance_evidence WHERE file_hash = ?", Integer.class, hash.trim());

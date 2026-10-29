@@ -20,6 +20,10 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Component
 public class EvidenceStorage {
+    private final java.util.concurrent.ConcurrentMap<String,java.util.Set<Long>> owners=new java.util.concurrent.ConcurrentHashMap<>();
+    public void registerOwner(String hash,Long employeeId){owners.computeIfAbsent(hash,k->java.util.concurrent.ConcurrentHashMap.newKeySet()).add(employeeId);}
+    public boolean uploadedBy(String hash,Long employeeId){return owners.getOrDefault(hash,java.util.Set.of()).contains(employeeId);}
+
     /** Đường dẫn public để xem ảnh, được map tới thư mục lưu trong WebConfig. */
     public static final String PUBLIC_PREFIX = "/uploads/evidence/";
     private static final long MAX_BYTES = 5L * 1024 * 1024;
