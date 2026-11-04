@@ -16,11 +16,13 @@ class AccountAccessScreen extends StatefulWidget {
     this.googleError,
     this.initialStep = AccountAuthStep.login,
   });
+
   final ValueChanged<AccountSession> onAuthenticated;
   final AccountAuthApi? api;
   final Widget? googleSignIn;
   final String? googleError;
   final AccountAuthStep initialStep;
+
   @override
   State<AccountAccessScreen> createState() => _AccountAccessScreenState();
 }
@@ -81,10 +83,12 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
 
   String? _passwordError(String? value) {
     if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
-    if (_step != AccountAuthStep.login && value.length < 8)
+    if (_step != AccountAuthStep.login && value.length < 8) {
       return 'Mật khẩu cần ít nhất 8 ký tự';
-    if (utf8.encode(value).length > 72)
+    }
+    if (utf8.encode(value).length > 72) {
       return 'Mật khẩu quá dài (tối đa 72 byte UTF-8)';
+    }
     return null;
   }
 
@@ -107,15 +111,16 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
             _email.text,
             _password.text,
           );
-          if (mounted)
+          if (mounted) {
             setState(() {
               _challengeId = id;
               _step = AccountAuthStep.verifyRegistration;
               _code.clear();
             });
+          }
         case AccountAuthStep.forgot:
           final id = await _api.forgotPassword(_email.text);
-          if (mounted)
+          if (mounted) {
             setState(() {
               _challengeId = id;
               _step = AccountAuthStep.reset;
@@ -123,6 +128,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
               _password.clear();
               _confirmation.clear();
             });
+          }
         case AccountAuthStep.verifyRegistration:
           final session = await _api.verifyRegistration(
             _challengeId!,
@@ -144,12 +150,13 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
           }
       }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = error is AccountApiException
               ? error.message
               : 'Chưa hoàn tất yêu cầu. Vui lòng thử lại.',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -166,19 +173,21 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
       final id = _step == AccountAuthStep.verifyRegistration
           ? await _api.register(_name.text, _email.text, _password.text)
           : await _api.forgotPassword(_email.text);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _challengeId = id;
           _code.clear();
           _notice = 'Đã gửi lại yêu cầu. Kiểm tra hộp thư và thư rác.';
         });
+      }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = error is AccountApiException
               ? error.message
               : 'Chưa gửi lại được mã xác nhận.',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -191,25 +200,28 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
     final isForgot = _step == AccountAuthStep.forgot;
     final isVerify = _step == AccountAuthStep.verifyRegistration;
     final isReset = _step == AccountAuthStep.reset;
+
     final title = switch (_step) {
-      AccountAuthStep.login => 'Đăng nhập',
+      AccountAuthStep.login => 'Đăng nhập hệ thống',
       AccountAuthStep.register => 'Tạo tài khoản nhân viên',
       AccountAuthStep.forgot => 'Quên mật khẩu',
       AccountAuthStep.verifyRegistration => 'Xác nhận email',
       AccountAuthStep.reset => 'Đặt lại mật khẩu',
     };
+
     final subtitle = switch (_step) {
       AccountAuthStep.login =>
-        'Sử dụng email hoặc mã nhân viên và mật khẩu đã đăng ký.',
+        'Đăng nhập bằng email hoặc mã nhân viên để bắt đầu ca làm việc.',
       AccountAuthStep.register =>
-        'Đăng ký tài khoản để xem lịch làm việc và chấm công.',
+        'Đăng ký tài khoản để xem lịch làm việc và chấm công tại siêu thị.',
       AccountAuthStep.forgot =>
-        'Nhập email tài khoản để nhận mã đặt lại mật khẩu.',
+        'Nhập email tài khoản để nhận mã đặt lại mật khẩu an toàn.',
       AccountAuthStep.verifyRegistration =>
         'Nhập mã 6 số gửi đến ${_email.text.trim()}. Mã có hiệu lực 10 phút.',
       AccountAuthStep.reset =>
         'Nếu email hợp lệ, mã 6 số sẽ được gửi đến ${_email.text.trim()}. Kiểm tra cả thư rác.',
     };
+
     final action = switch (_step) {
       AccountAuthStep.login => 'Đăng nhập',
       AccountAuthStep.register => 'Đăng ký',
@@ -217,6 +229,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
       AccountAuthStep.verifyRegistration => 'Xác nhận & đăng nhập',
       AccountAuthStep.reset => 'Lưu mật khẩu mới',
     };
+
     return AppAuthLayout(
       title: title,
       subtitle: subtitle,
@@ -235,8 +248,9 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   maxLength: 150,
                   decoration: const InputDecoration(
                     labelText: 'Họ và tên',
+                    hintText: 'Ví dụ: Nguyễn Văn An',
                     counterText: '',
-                    prefixIcon: Icon(Icons.person_outline),
+                    prefixIcon: Icon(Icons.person_outline_rounded),
                   ),
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Vui lòng nhập họ và tên'
@@ -253,8 +267,9 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   maxLength: 150,
                   decoration: const InputDecoration(
                     labelText: 'Email / Mã nhân viên',
+                    hintText: 'admin@smartmarket.local hoặc EMP001',
                     counterText: '',
-                    prefixIcon: Icon(Icons.person_outline),
+                    prefixIcon: Icon(Icons.badge_outlined),
                   ),
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Vui lòng nhập tài khoản'
@@ -271,9 +286,10 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   textInputAction: TextInputAction.next,
                   maxLength: 150,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Địa chỉ Email',
+                    hintText: 'name@example.com',
                     counterText: '',
-                    prefixIcon: Icon(Icons.mail_outline),
+                    prefixIcon: Icon(Icons.mail_outline_rounded),
                   ),
                   validator: (value) =>
                       value != null &&
@@ -297,7 +313,8 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   ],
                   decoration: const InputDecoration(
                     labelText: 'Mã xác nhận 6 số',
-                    prefixIcon: Icon(Icons.verified_user_outlined),
+                    hintText: '000000',
+                    prefixIcon: Icon(Icons.mark_email_read_outlined),
                   ),
                   validator: (value) =>
                       value != null && RegExp(r'^\d{6}$').hasMatch(value)
@@ -321,7 +338,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   },
                   decoration: InputDecoration(
                     labelText: isReset ? 'Mật khẩu mới' : 'Mật khẩu',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
                     suffixIcon: IconButton(
                       tooltip: _hidePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
                       onPressed: () =>
@@ -330,6 +347,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                         _hidePassword
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
+                        size: 20,
                       ),
                     ),
                   ),
@@ -344,7 +362,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   obscureText: _hideConfirmation,
                   decoration: InputDecoration(
                     labelText: 'Xác nhận mật khẩu',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(Icons.lock_reset_rounded),
                     suffixIcon: IconButton(
                       tooltip: _hideConfirmation
                           ? 'Hiện xác nhận mật khẩu'
@@ -356,6 +374,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                         _hideConfirmation
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
+                        size: 20,
                       ),
                     ),
                   ),
@@ -377,32 +396,100 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                     child: const Text('Quên mật khẩu?'),
                   ),
                 ),
+
+              // THÔNG BÁO LỖI HOẶC THÀNH CÔNG RÕ RÀNG
               if (_error != null || _notice != null) ...[
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error ?? _notice!,
-                    style: TextStyle(
-                      color: _error == null
-                          ? AppColors.secondary
-                          : AppColors.statusAbsent,
-                      fontSize: 13,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _error != null
+                        ? const Color(0xFFFEF2F2)
+                        : const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _error != null
+                          ? const Color(0xFFFCA5A5)
+                          : const Color(0xFF86EFAC),
                     ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _error != null
+                            ? Icons.error_outline_rounded
+                            : Icons.check_circle_outline_rounded,
+                        size: 20,
+                        color: _error != null
+                            ? AppColors.statusAbsent
+                            : AppColors.secondary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            _error ?? _notice!,
+                            style: TextStyle(
+                              color: _error != null
+                                  ? const Color(0xFF991B1B)
+                                  : const Color(0xFF166534),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
+
+              // NÚT HÀNH ĐỘNG CHÍNH CÓ TRẠNG THÁI LOADING RÕ RÀNG
               FilledButton(
                 onPressed: _busy ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 child: _busy
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Đang xử lý...',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       )
-                    : Text(action),
+                    : Text(
+                        action,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
+
               const SizedBox(height: 12),
+
               if (isLogin) ...[
                 if (widget.googleSignIn != null) ...[
                   const SizedBox(height: 8),
@@ -412,20 +499,24 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 14),
                         child: Text(
-                          'hoặc',
-                          style: TextStyle(color: AppColors.textSecondary),
+                          'hoặc đăng nhập nhanh',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                       Expanded(child: Divider()),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   IgnorePointer(ignoring: _busy, child: widget.googleSignIn!),
                   if (widget.googleError != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         'Google: ${widget.googleError}',
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
@@ -439,7 +530,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text(
-                      'Chưa có tài khoản?',
+                      'Chưa có tài khoản nhân viên?',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -449,7 +540,10 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                       onPressed: _busy
                           ? null
                           : () => _change(AccountAuthStep.register),
-                      child: const Text('Đăng ký ngay'),
+                      child: const Text(
+                        'Đăng ký ngay',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
@@ -457,7 +551,7 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                 if (isVerify || isReset)
                   TextButton(
                     onPressed: _busy ? null : _resend,
-                    child: const Text('Gửi lại mã xác nhận'),
+                    child: const Text('Gửi lại mã xác nhận qua email'),
                   ),
                 TextButton.icon(
                   onPressed: _busy
@@ -468,15 +562,28 @@ class _AccountAccessScreenState extends State<AccountAccessScreen> {
                 ),
               ],
               if (isRegister)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Tài khoản mới có quyền Nhân viên. Quản lý sẽ phân chi nhánh và lịch làm việc cho bạn.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      height: 1.6,
-                    ),
+                Container(
+                  margin: const EdgeInsets.only(top: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 18, color: AppColors.primary),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tài khoản mới đăng ký sẽ thuộc vai trò Nhân viên. Quản lý siêu thị sẽ xếp ca và gán khu vực làm việc cho bạn.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.primaryDark,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
