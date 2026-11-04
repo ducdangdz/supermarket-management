@@ -1,4 +1,4 @@
-import '../../core/widgets/app_workspace.dart';
+﻿import '../../core/widgets/app_workspace.dart';
 import 'dart:convert';
 
 import 'location/location_service.dart';
@@ -87,8 +87,15 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
   }
 
   Future<void> _attendance(Map<String, dynamic> schedule, bool checkIn) async {
-    final token = await _askForQr(checkIn);
-    if (token == null) return;
+    // Chỉ cho phép quét QR bằng camera ở bản chính thức; không nhập mã thủ công.
+    final token = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => QrScannerPage(
+          title: checkIn ? 'Quét QR Check-in' : 'Quét QR Check-out',
+        ),
+      ),
+    );
+    if (token == null || token.trim().isEmpty) return;
     try {
       LocationSample? location;
       try {
@@ -111,7 +118,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
         body: jsonEncode({
           'scheduleId': schedule['scheduleId'],
           'employeeId': widget.employeeId,
-          'qrToken': token,
+          'qrToken': token.trim(),
           'latitude': location?.latitude,
           'longitude': location?.longitude,
           'accuracyMeters': location?.accuracyMeters,
@@ -127,49 +134,12 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
       );
       _load();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(_message(e))));
+      }
     }
-  }
-
-  Future<String?> _askForQr(bool checkIn) async {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(checkIn ? 'Check-in bằng QR' : 'Check-out bằng QR'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Mã QR',
-            hintText: 'Quét hoặc nhập mã do quản lý tạo',
-            suffixIcon: IconButton(
-              tooltip: 'Quét QR bằng camera',
-              icon: const Icon(Icons.qr_code_scanner),
-              onPressed: () async {
-                final code = await Navigator.of(context).push<String>(
-                  MaterialPageRoute(builder: (_) => const QrScannerPage()),
-                );
-                if (code != null) controller.text = code;
-              },
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Xác nhận'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
