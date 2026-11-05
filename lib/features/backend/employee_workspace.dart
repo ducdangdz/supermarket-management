@@ -92,21 +92,9 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
     final token = await _askForQr(checkIn);
     if (token == null) return;
     try {
-      LocationSample? location;
-      try {
-        location = await getCurrentLocation();
-      } on Object catch (error) {
-        if (schedule['requireLocation'] == true) rethrow;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Không lấy được GPS: ${_message(error)}. Hệ thống vẫn tiếp tục vì ca này không bắt buộc GPS.',
-              ),
-            ),
-          );
-        }
-      }
+      // GPS bắt buộc: luôn đo vị trí mới ngay lúc chấm công, không dùng vị trí cũ.
+      // GPS tắt / từ chối quyền / sai số lớn / giả lập → GpsException với thông báo tiếng Việt.
+      final location = await GpsService.instance.getFreshLocation();
       final response = await http.post(
         Uri.parse('$_base/attendance/${checkIn ? 'check-in' : 'check-out'}'),
         headers: _headers,
@@ -114,9 +102,8 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
           'scheduleId': schedule['scheduleId'],
           'employeeId': widget.employeeId,
           'qrToken': token,
-          'latitude': location?.latitude,
-          'longitude': location?.longitude,
-          'accuracyMeters': location?.accuracyMeters,
+          ...location.toJson(),
+          'clientTime': isoWithOffset(DateTime.now()),
         }),
       );
       _ensureOk(response);

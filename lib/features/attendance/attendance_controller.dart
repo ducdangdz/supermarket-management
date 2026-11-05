@@ -152,6 +152,28 @@ class AttendanceController extends ChangeNotifier {
     _isSubmitting = true;
     _notify();
     try {
+      // GPS bắt buộc: đo lại vị trí MỚI ngay lúc gửi, không dùng vị trí đã lấy lúc mở màn hình.
+      final fresh = await locationService.getCurrentLocation();
+      _locationResult = fresh;
+      _notify();
+      if (!fresh.isSuccess) {
+        return AttendanceResult.failure(
+          action: action,
+          code: fresh.code ?? 'LOCATION_REQUIRED',
+          message: fresh.message ?? 'Không lấy được vị trí GPS.',
+          at: _clock(),
+        );
+      }
+      final gpsViolation = pendingViolation;
+      if (gpsViolation != null) {
+        return AttendanceResult.failure(
+          action: action,
+          code: gpsViolation.code,
+          message: gpsViolation.message,
+          at: _clock(),
+        );
+      }
+
       UploadedEvidence? uploaded;
       if (_evidence != null) {
         uploaded = await repository.uploadEvidence(_evidence!);
@@ -161,7 +183,7 @@ class AttendanceController extends ChangeNotifier {
           action: action,
           scheduleId: _selectedSchedule?.scheduleId,
           qrToken: _qrToken,
-          location: location,
+          location: fresh.location,
           evidence: uploaded,
           evidenceCapturedAt: _evidence?.capturedAt,
           clientTime: _clock(),
