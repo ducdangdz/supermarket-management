@@ -65,15 +65,8 @@ class _QrCheckinScreenState extends State<QrCheckinScreen> {
         );
         if (schedule == null) return;
       }
-      LocationSample? location;
-      try {
-        location = await getCurrentLocation();
-      } catch (_) {
-        if (schedule['requireLocation'] == true)
-          throw StateError(
-            'Ca làm yêu cầu vị trí. Hãy cho phép truy cập vị trí rồi thử lại.',
-          );
-      }
+      // GPS bắt buộc: luôn đo vị trí mới ngay lúc chấm công, không dùng vị trí cũ.
+      final location = await GpsService.instance.getFreshLocation();
       final checkout = schedule['checkInAt'] != null;
       final result = await api.request(
         '/attendance/${checkout ? 'check-out' : 'check-in'}',
@@ -82,9 +75,8 @@ class _QrCheckinScreenState extends State<QrCheckinScreen> {
           'scheduleId': schedule['scheduleId'],
           'employeeId': api.employeeId,
           'qrToken': token.trim(),
-          'latitude': location?.latitude,
-          'longitude': location?.longitude,
-          'accuracyMeters': location?.accuracyMeters,
+          ...location.toJson(),
+          'clientTime': isoWithOffset(DateTime.now()),
         },
       );
       if (mounted)
@@ -95,7 +87,9 @@ class _QrCheckinScreenState extends State<QrCheckinScreen> {
         });
       await scanner.stop();
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) {
+        setState(() => error = e.toString().replaceFirst('Bad state: ', ''));
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

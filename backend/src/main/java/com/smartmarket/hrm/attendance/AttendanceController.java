@@ -43,7 +43,7 @@ import org.springframework.web.multipart.MultipartFile;
  *   <li>Lịch làm: nhân viên có lịch hôm nay, đúng ca, đúng khu vực của QR (sai khu vực → INVALID_LOCATION).</li>
  *   <li>Trạng thái: chưa check-in mới được check-in; đã check-in mới được check-out.</li>
  *   <li>Giờ vào: không quá sớm; quá {@code allowed_late_minutes} → LATE, ngược lại PRESENT.</li>
- *   <li>GPS (nếu ca yêu cầu): có tọa độ, sai số chấp nhận được, nằm trong bán kính khu vực.</li>
+ *   <li>GPS (luôn bắt buộc): có tọa độ hợp lệ, không giả lập, mới đo, sai số chấp nhận được, nằm trong bán kính khu vực.</li>
  *   <li>Ảnh bằng chứng (nếu ca yêu cầu): đã upload qua {@code POST /api/attendance/evidence} và chưa từng dùng.</li>
  * </ol>
  * Vi phạm bất kỳ bước nào ném {@link AttendanceException} kèm mã lỗi; giao dịch bị rollback nên không lưu gì.
@@ -56,6 +56,10 @@ public class AttendanceController {
     private static final int DEFAULT_RADIUS_METERS = 100;
     /** GPS có sai số lớn hơn ngưỡng này bị coi là không đáng tin cậy. */
     private static final double MAX_ACCURACY_METERS = 100;
+    /** Vị trí phải được đo trong khoảng này trước lúc gửi (giây), tránh dùng lại vị trí cũ. */
+    private static final long MAX_GPS_AGE_SECONDS = 120;
+    /** Sai lệch giờ cho phép giữa điện thoại và server khi app không gửi clientTime (giây). */
+    private static final long MAX_CLOCK_SKEW_SECONDS = 300;
     private static final String CHECK_IN = "CHECK_IN";
     private static final String CHECK_OUT = "CHECK_OUT";
 
@@ -211,7 +215,7 @@ public class AttendanceController {
             status = now.isAfter(shiftStart.plusMinutes(allowedLate)) ? "LATE" : "PRESENT";
         }
 
-        Double distance = checkLocation(schedule, body);
+        Double distance = checkLocation(schedule, body, now);
         String evidenceUrl = checkEvidence(schedule, body, current.employeeId());
         String note = buildNote(type, body);
 
@@ -317,28 +321,67 @@ public class AttendanceController {
     }
 
     /** Kiểm tra GPS khi ca yêu cầu; trả về khoảng cách tới khu vực (mét) nếu tính được. */
-    private Double checkLocation(Map<String, Object> schedule, AttendanceRequest body) {
-        boolean required = flag(schedule.get("require_location"));
-        if (body.latitude() == null || body.longitude() == null) {
-            if (required) throw new AttendanceException("LOCATION_REQUIRED", "Ca làm này yêu cầu bật vị trí GPS khi chấm công.");
-            return null;
+    /**
+     * GPS bắt buộc với mọi lần chấm công (không phụ thuộc cờ require_location của ca).
+     * Trả về khoảng cách (mét) từ nhân viên tới khu vực làm việc.
+     */
+    Double checkLocation(Map<String, Object> schedule, AttendanceRequest body, LocalDateTime now) {
+        Double lat = body.latitude();
+        Double lng = body.longitude();
+        if (lat == null || lng == null) {
+            throw new AttendanceException("LOCATION_REQUIRED",
+                    "Bắt buộc gửi vị trí GPS khi chấm công. Hãy bật GPS và cho phép ứng dụng truy cập vị trí.");
         }
+        if (!Double.isFinite(lat) || !Double.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            throw new AttendanceException("GPS_INVALID", "Tọa độ GPS không hợp lệ. Hãy lấy lại vị trí.");
+        }
+        if (Boolean.TRUE.equals(body.isMocked())) {
+            throw new AttendanceException("GPS_MOCKED",
+                    "Phát hiện vị trí GPS giả lập. Hãy tắt ứng dụng giả lập vị trí (Mock location) rồi thử lại.");
+        }
+        Double accuracy = body.accuracyMeters();
+        if (accuracy == null || !Double.isFinite(accuracy) || accuracy < 0) {
+            throw new AttendanceException("GPS_INACCURATE", "Không xác định được sai số GPS. Hãy lấy lại vị trí.");
+        }
+        if (accuracy > MAX_ACCURACY_METERS) {
+            throw new AttendanceException("GPS_INACCURATE",
+                    "Tín hiệu GPS chưa đủ chính xác (sai số %.0f m, cho phép tối đa %.0f m). Hãy ra chỗ thoáng và thử lại."
+                            .formatted(accuracy, MAX_ACCURACY_METERS));
+        }
+        checkGpsFreshness(body, now);
+
         Double areaLat = dbl(schedule.get("area_latitude"));
         Double areaLng = dbl(schedule.get("area_longitude"));
-        Double distance = areaLat == null || areaLng == null ? null
-                : Math.round(distanceMeters(body.latitude(), body.longitude(), areaLat, areaLng) * 10) / 10.0;
-        if (!required) return distance;
-
-        if (body.accuracyMeters() != null && body.accuracyMeters() > MAX_ACCURACY_METERS) {
-            throw new AttendanceException("GPS_INACCURATE",
-                    "Tín hiệu GPS chưa đủ chính xác (sai số %.0f m). Hãy ra chỗ thoáng và thử lại.".formatted(body.accuracyMeters()));
+        if (areaLat == null || areaLng == null) {
+            throw new AttendanceException("AREA_LOCATION_NOT_CONFIGURED",
+                    "Khu vực \"%s\" chưa được cấu hình tọa độ nên không thể xác thực vị trí. Hãy báo quản lý cập nhật tọa độ khu vực."
+                            .formatted(schedule.get("area_name")));
         }
+        double distance = Math.round(distanceMeters(lat, lng, areaLat, areaLng) * 10) / 10.0;
         int radius = intOr(schedule.get("radius_meters"), DEFAULT_RADIUS_METERS);
-        if (distance != null && distance > radius) {
+        if (distance > radius) {
             throw new AttendanceException("INVALID_LOCATION",
-                    "Bạn đang cách khu vực \"%s\" khoảng %.0f m (cho phép %d m).".formatted(schedule.get("area_name"), distance, radius));
+                    "Bạn đang cách khu vực \"%s\" khoảng %.0f m (cho phép %d m). Hãy đến đúng khu vực làm việc rồi chấm công."
+                            .formatted(schedule.get("area_name"), distance, radius));
         }
         return distance;
+    }
+
+    /** Chặn vị trí cũ: so thời điểm đo GPS với giờ gửi trên cùng điện thoại (tránh lệch đồng hồ với server). */
+    private void checkGpsFreshness(AttendanceRequest body, LocalDateTime now) {
+        LocalDateTime capturedAt = parseClientTime(body.locationCapturedAt());
+        if (capturedAt == null) {
+            throw new AttendanceException("GPS_STALE", "Thiếu thời gian lấy vị trí GPS. Hãy lấy lại vị trí rồi chấm công.");
+        }
+        LocalDateTime clientTime = parseClientTime(body.clientTime());
+        long ageSeconds = Duration.between(capturedAt, clientTime != null ? clientTime : now).getSeconds();
+        // Có clientTime: cùng đồng hồ điện thoại nên so chặt. Không có: so với giờ server, nới thêm phần lệch giờ.
+        long maxAge = clientTime != null ? MAX_GPS_AGE_SECONDS : MAX_GPS_AGE_SECONDS + MAX_CLOCK_SKEW_SECONDS;
+        long maxAhead = clientTime != null ? 10 : MAX_CLOCK_SKEW_SECONDS;
+        if (ageSeconds > maxAge || ageSeconds < -maxAhead) {
+            throw new AttendanceException("GPS_STALE",
+                    "Vị trí GPS đã cũ (đo cách đây quá %d giây). Hãy lấy lại vị trí mới rồi chấm công.".formatted(MAX_GPS_AGE_SECONDS));
+        }
     }
 
     /** Kiểm tra ảnh bằng chứng; trả về URL ảnh nếu có. */
@@ -450,7 +493,9 @@ public class AttendanceController {
      */
     public record AttendanceRequest(Long scheduleId, Long employeeId, String qrToken,
             Double latitude, Double longitude, Double accuracyMeters,
-            String clientTime, String deviceInfo, EvidenceRequest evidence) { }
+            String clientTime, String deviceInfo, EvidenceRequest evidence,
+            /* Thời điểm điện thoại đo GPS (ISO-8601) và cờ GPS giả lập do thiết bị báo. */
+            String locationCapturedAt, Boolean isMocked) { }
     public record EvidenceRequest(String fileHash, String capturedAt) { }
 
     public record AttendanceResponse(Long attendanceId, Long scheduleId, String action, LocalDateTime occurredAt,

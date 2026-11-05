@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'auth/web_google_button.dart';
+import 'location/gps_gate.dart';
 import '../launcher/authenticated_team_home.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -172,6 +173,18 @@ class _SmartMarketAppState extends State<SmartMarketApp> {
                 });
               },
             )
+          : requiresEmployeeGps(_session!.roleCode)
+          // Nhân viên bắt buộc bật GPS + cấp quyền vị trí trước khi vào hệ thống.
+          ? EmployeeGpsGate(
+              key: ValueKey('gps-${_session!.idToken}'),
+              onLogout: _signOut,
+              child: AuthenticatedTeamHome(
+                key: ValueKey(_session!.idToken),
+                session: _session!,
+                onLogout: _signOut,
+              ),
+            )
+          // ADMIN, MANAGER, HR: không bắt buộc GPS khi chỉ dùng trang quản trị.
           : AuthenticatedTeamHome(
               key: ValueKey(_session!.idToken),
               session: _session!,
