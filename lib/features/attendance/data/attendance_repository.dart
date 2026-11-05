@@ -1,5 +1,6 @@
 import '../../../core/network/team_api.dart';
 import '../../../features/auth/data/account_auth_api.dart';
+import '../../../core/services/device_identity_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/attendance_models.dart';
@@ -59,6 +60,7 @@ class RemoteAttendanceRepository implements AttendanceRepository {
         Uri.parse('$accountApiBaseUrl/attendance/evidence'),
       );
       request.headers['Authorization'] = 'Bearer ${api.token}';
+      request.headers['X-Device-Id'] = DeviceIdentityService.currentId;
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',

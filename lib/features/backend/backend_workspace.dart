@@ -1,5 +1,6 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/device_identity_service.dart';
 import '../auth/data/account_auth_api.dart';
 import '../auth/presentation/account_access_screen.dart';
 import 'dart:async';
@@ -96,10 +97,11 @@ class _SmartMarketAppState extends State<SmartMarketApp> {
       });
     }
     try {
+      final deviceId = await DeviceIdentityService.getId();
       final response = await http.post(
         Uri.parse('$_apiBaseUrl/auth/google'),
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'idToken': idToken}),
+        body: jsonEncode({'idToken': idToken, 'deviceId': deviceId}),
       );
       final payload = _decode(response.body);
       if (response.statusCode != 200) {
@@ -107,8 +109,16 @@ class _SmartMarketAppState extends State<SmartMarketApp> {
           payload['message']?.toString() ?? 'Đăng nhập thất bại.',
         );
       }
-      if (mounted)
-        setState(() => _session = Session.fromJson(payload, idToken));
+      final user = payload['user'];
+      final token = payload['token'];
+      if (user is! Map || token is! String || token.isEmpty) {
+        throw StateError('Máy chủ trả về thông tin đăng nhập chưa hợp lệ.');
+      }
+      if (mounted) {
+        setState(
+          () => _session = Session.fromJson(Map<String, dynamic>.from(user), token),
+        );
+      }
     } on Object catch (error) {
       _showError(_messageFor(error));
     } finally {

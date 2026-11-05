@@ -1,4 +1,5 @@
 import '../../core/widgets/app_workspace.dart';
+import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
 import 'location/location_service.dart';
@@ -39,6 +40,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer ${widget.idToken}',
+    'X-Device-Id': DeviceIdentityService.currentId,
     'Content-Type': 'application/json',
   };
   String get _base {

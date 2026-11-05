@@ -30,9 +30,12 @@ public class AuthInterceptor implements HandlerInterceptor {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu thông tin phiên đăng nhập.");
         }
         String token = header.substring(7);
+        String deviceId = request.getHeader("X-Device-Id");
         CurrentUser user;
         try {
-            user = token.startsWith("smh_") ? accounts.authenticate(token) : tokens.authenticate(token);
+            user = token.startsWith("smh_")
+                    ? accounts.authenticate(token, deviceId)
+                    : tokens.authenticate(token);
         } catch (org.springframework.security.oauth2.jwt.JwtException | IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ.");
         }

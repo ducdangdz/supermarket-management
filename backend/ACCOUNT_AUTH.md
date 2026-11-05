@@ -3,7 +3,7 @@
 ## Các bước bật chức năng trên máy của bạn
 
 1. Nếu chưa có database, chạy schema `database/smartmarket_hrm_sql_server.sql` trước.
-2. Trong SQL Server Management Studio, chạy `backend/database/migrations/001_account_auth.sql`. Script giữ các hồ sơ cũ và bổ sung bảng mã xác nhận/phiên đăng nhập. Index Google được chuyển thành unique index chỉ áp dụng cho giá trị khác NULL để nhiều tài khoản email có thể cùng tồn tại.
+2. Trong SQL Server Management Studio, chạy lần lượt `backend/database/migrations/001_account_auth.sql`, `002_allow_local_login.sql` (nếu chưa chạy) và `003_single_device_session.sql`. Migration 003 thu hồi các phiên cũ, bổ sung định danh cài đặt cho phiên và chỉ giới hạn một phiên ứng dụng hoạt động cho mỗi tài khoản `EMPLOYEE`.
 3. Cấu hình SQL Server như `backend/README.md`, rồi cấu hình SMTP qua biến môi trường của phiên terminal chạy backend:
 
 ```powershell
@@ -41,7 +41,7 @@ Nếu đang chạy Flutter, nhấn R để khởi động lại. Nếu đang ch�
 - **Quên mật khẩu**: nhập email, nhận mã và đặt mật khẩu mới. Sau khi đổi, đăng nhập lại; các phiên đăng nhập bằng mật khẩu trước đó bị thu hồi.
 - Hồ sơ Google đã có sẵn có thể dùng Quên mật khẩu để thiết lập mật khẩu sau khi xác nhận quyền sở hữu email. Google vẫn được hỗ trợ.
 
-Mật khẩu mới tối thiểu 8 ký tự, tối đa 72 byte UTF-8. Mã dùng một lần trong 10 phút, giới hạn 5 lần nhập sai; tối đa 3 yêu cầu gửi mã trong 15 phút cho một email. Đăng nhập sai 5 lần bị giới hạn 15 phút theo định danh trên một tiến trình backend. Phiên đăng nhập mật khẩu hết hạn sau 8 giờ.
+Mật khẩu mới tối thiểu 8 ký tự, tối đa 72 byte UTF-8. Mã dùng một lần trong 10 phút, giới hạn 5 lần nhập sai; tối đa 3 yêu cầu gửi mã trong 15 phút cho một email. Đăng nhập sai 5 lần bị giới hạn 15 phút theo định danh trên một tiến trình backend. Phiên đăng nhập mật khẩu hết hạn sau 8 giờ. Chính sách một thiết bị chỉ áp dụng cho `EMPLOYEE`: khi nhân viên đăng nhập từ thiết bị khác, phiên ở thiết bị trước bị thu hồi. Với phiên `EMPLOYEE`, mọi API có `Bearer smh_...` phải gửi thêm header `X-Device-Id` khớp với thiết bị đã đăng nhập; thiếu hoặc sai header sẽ nhận 401. `ADMIN`, `MANAGER` và `HR` có thể đăng nhập trên nhiều thiết bị.
 
 Mật khẩu và mã email được băm bằng BCrypt. Database chỉ giữ SHA-256 của token phiên, không giữ token thô. API đăng ký không nhận quyền quản trị từ phía ứng dụng.
 
@@ -49,9 +49,9 @@ Mật khẩu và mã email được băm bằng BCrypt. Database chỉ giữ SHA
 
 | Endpoint | Nội dung |
 | --- | --- |
-| POST /api/auth/login | username, password → token, user |
+| POST /api/auth/login | username, password, deviceId → token, user |
 | POST /api/auth/register | fullName, email, password → challengeId |
-| POST /api/auth/verify-registration | challengeId, code → token, user |
+| POST /api/auth/verify-registration | challengeId, code, deviceId → token, user |
 | POST /api/auth/forgot-password | email → challengeId, phản hồi chung |
 | POST /api/auth/reset-password | challengeId, code, password |
 | POST /api/auth/logout | Authorization: Bearer token |

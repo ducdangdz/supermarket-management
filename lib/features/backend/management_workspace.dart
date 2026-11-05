@@ -1,4 +1,5 @@
 import '../../core/widgets/app_workspace.dart';
+import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,7 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer ${widget.idToken}',
+    'X-Device-Id': DeviceIdentityService.currentId,
     'Content-Type': 'application/json',
   };
   bool get _canQr => widget.roleCode == 'ADMIN' || widget.roleCode == 'MANAGER';

@@ -6,10 +6,12 @@ import 'package:provider/provider.dart';
 import 'features/backend/backend_workspace.dart';
 import 'services/mock_data_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/device_identity_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await StorageService.init();
+  await DeviceIdentityService.getId();
   await initializeDateFormatting('vi');
   runApp(
     MultiProvider(

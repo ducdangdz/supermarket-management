@@ -19,7 +19,9 @@ class AccountAuthServiceTest {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private static final String EMAIL = "employee@example.com";
     private static final String ID = UUID.randomUUID().toString();
+    private static final String DEVICE_ID = "0123456789abcdef0123456789abcdef";
     private static final CurrentUser USER = new CurrentUser(42L, "NV-42", "Nhân viên mới", EMAIL, "EMPLOYEE", "Nhân viên", null);
+    private static final CurrentUser MANAGER = new CurrentUser(99L, "QL-99", "Quản lý", "manager@example.com", "MANAGER", "Quản lý", null);
 
     @BeforeEach void setup() {
         jdbc = mock(JdbcTemplate.class);
@@ -36,23 +38,24 @@ class AccountAuthServiceTest {
     }
     @Test void validPasswordIssuesRandomSessionAndStoresOnlyHash() {
         loginAccount("Password123!");
-        var response = service.login("  EMPLOYEE@example.com ", "Password123!");
+        var response = service.login("  EMPLOYEE@example.com ", "Password123!", DEVICE_ID);
         assertEquals(USER, response.user());
         assertTrue(response.token().startsWith("smh_"));
         assertEquals(47, response.token().length());
-        verify(jdbc).update(startsWith("INSERT INTO dbo.auth_sessions"), eq(AccountAuthService.tokenHash(response.token())), eq(42L));
+        verify(jdbc).update("DELETE FROM dbo.auth_sessions WHERE employee_id = ?", 42L);
+        verify(jdbc).update(startsWith("INSERT INTO dbo.auth_sessions"), eq(AccountAuthService.tokenHash(response.token())), eq(42L), eq(DEVICE_ID));
     }
     @Test void incorrectPasswordCannotCreateSession() {
         loginAccount("Password123!");
-        var error = assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "incorrect"));
+        var error = assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "incorrect", DEVICE_ID));
         assertEquals(HttpStatus.UNAUTHORIZED, error.getStatusCode());
         verify(jdbc, never()).update(startsWith("INSERT INTO dbo.auth_sessions"), any(), any());
     }
     @Test void repeatedWrongPasswordsAreThrottled() {
         loginAccount("Password123!");
-        for (int i = 0; i < 5; i++) assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "wrong"));
+        for (int i = 0; i < 5; i++) assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "wrong", DEVICE_ID));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS,
-                assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "Password123!")).getStatusCode());
+                assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "Password123!", DEVICE_ID)).getStatusCode());
     }
     @Test void registrationRequiresMailboxSetupBeforeCreatingAnything() {
         doThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE)).when(mail).ensureConfigured();
@@ -84,7 +87,7 @@ class AccountAuthServiceTest {
         when(jdbc.update(startsWith("INSERT INTO dbo.employees"), anyString(), eq("Nhân viên mới"), eq(EMAIL), anyString())).thenReturn(1);
         when(jdbc.query(contains("WHERE e.email = ?"), same(AccountAuthService.ACCOUNT), eq(EMAIL)))
                 .thenReturn(List.of(new AccountAuthService.Account(USER, encoder.encode("Password123!"))));
-        var response = service.verifyRegistration(ID, "123456");
+        var response = service.verifyRegistration(ID, "123456", DEVICE_ID);
         assertEquals("EMPLOYEE", response.user().roleCode());
         verify(jdbc).update(contains("WHERE role_code = 'EMPLOYEE'"), startsWith("NV-"), eq("Nhân viên mới"), eq(EMAIL), anyString());
         verify(jdbc).update("UPDATE dbo.auth_challenges SET consumed = 1 WHERE challenge_id = ?", ID);
@@ -116,7 +119,7 @@ class AccountAuthServiceTest {
     }
     @Test void expiredSessionFailsAndLogoutHashesTheToken() {
         when(jdbc.query(contains("JOIN dbo.auth_sessions"), same(AccountAuthService.ACCOUNT), anyString())).thenReturn(List.of());
-        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class, () -> service.authenticate("smh_expired")).getStatusCode());
+        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class, () -> service.authenticate("smh_expired", DEVICE_ID)).getStatusCode());
         service.logout("smh_token");
         verify(jdbc).update("DELETE FROM dbo.auth_sessions WHERE token_hash = ?", AccountAuthService.tokenHash("smh_token"));
     }
@@ -124,5 +127,16 @@ class AccountAuthServiceTest {
         assertThrows(ResponseStatusException.class, () -> AccountAuthService.validatePassword("short"));
         assertThrows(ResponseStatusException.class, () -> AccountAuthService.validatePassword("ắ".repeat(30)));
         assertDoesNotThrow(() -> AccountAuthService.validatePassword("ViệtNam123!"));
+    }
+    @Test void invalidDeviceIdCannotCreateSession() {
+        loginAccount("Password123!");
+        var error = assertThrows(ResponseStatusException.class, () -> service.login(EMAIL, "Password123!", "not-a-device"));
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+        verify(jdbc, never()).update(startsWith("INSERT INTO dbo.auth_sessions"), any(), any(), any());
+    }
+    @Test void managerSessionDoesNotRevokeOtherManagerDevices() {
+        service.issueSession(MANAGER, DEVICE_ID);
+        verify(jdbc, never()).update("DELETE FROM dbo.auth_sessions WHERE employee_id = ?", 99L);
+        verify(jdbc).update(startsWith("INSERT INTO dbo.auth_sessions"), any(), eq(99L), eq(DEVICE_ID));
     }
 }
