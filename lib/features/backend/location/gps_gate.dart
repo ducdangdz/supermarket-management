@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'location_service.dart';
@@ -61,7 +63,17 @@ class _EmployeeGpsGateState extends State<EmployeeGpsGate>
 
   Future<void> _check({required bool requestPermission}) async {
     setState(() => _checking = true);
-    final result = await _gps.checkReady(requestPermission: requestPermission);
+    // Một số trình duyệt không phản hồi lời gọi quyền vị trí (ví dụ khi hộp
+    // thoại quyền đã bị chặn). Không để nhân viên bị kẹt mãi ở màn hình chờ.
+    final result = await _gps
+        .checkReady(requestPermission: requestPermission)
+        .timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => const GpsCheckResult(
+            GpsStatus.error,
+            'Yêu cầu quyền vị trí không phản hồi. Hãy cho phép Vị trí trong Chrome rồi bấm “Thử lại”.',
+          ),
+        );
     if (!mounted) return;
     setState(() {
       _result = result;

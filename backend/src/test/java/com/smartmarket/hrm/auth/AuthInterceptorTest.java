@@ -38,7 +38,8 @@ class AuthInterceptorTest {
         request.addHeader("Authorization", "Bearer smh_valid");
         assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
                 () -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).getStatusCode());
-        verifyNoInteractions(google, accounts);
+        verify(accounts).authenticate("smh_valid", null);
+        verifyNoInteractions(google);
     }
     @Test void newlyRegisteredEmployeeCannotAccessManagementApi() {
         when(accounts.authenticate("smh_valid", DEVICE_ID)).thenReturn(employee);

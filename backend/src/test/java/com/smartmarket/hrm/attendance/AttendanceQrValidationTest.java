@@ -85,6 +85,13 @@ class AttendanceQrValidationTest {
         return row;
     }
 
+    private AttendanceController.AttendanceRequest attendanceRequest() {
+        String now = LocalDateTime.now().toString();
+        return new AttendanceController.AttendanceRequest(
+                null, EMPLOYEE_ID, QR_TOKEN, 10.77, 106.70, 5.0,
+                now, null, null, now, false);
+    }
+
     @Test
     void validQr_checkInSucceeds() {
         var qrRow = createQrRow(SHIFT_ID, AREA_ID, "CHECK_IN", false, LocalDateTime.now().plusSeconds(90));
@@ -99,7 +106,7 @@ class AttendanceQrValidationTest {
         when(jdbc.queryForObject(contains("SELECT attendance_id FROM dbo.attendance_records"), eq(Long.class), eq(100L)))
                 .thenReturn(200L);
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         var response = controller.checkIn(requestBody, employeeRequest());
 
         assertNotNull(response);
@@ -112,10 +119,10 @@ class AttendanceQrValidationTest {
         var expiredRow = createQrRow(SHIFT_ID, AREA_ID, "CHECK_IN", false, LocalDateTime.now().minusSeconds(10));
         when(jdbc.queryForList(contains("FROM dbo.qr_sessions"), eq(QR_HASH))).thenReturn(List.of(expiredRow));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkIn(requestBody, employeeRequest()));
 
-        assertEquals("QR_EXPIRED", ex.getCode());
+        assertEquals("QR_EXPIRED", ex.code());
         assertEquals("QR đã hết hạn.", ex.getMessage());
     }
 
@@ -124,10 +131,10 @@ class AttendanceQrValidationTest {
         var revokedRow = createQrRow(SHIFT_ID, AREA_ID, "CHECK_IN", true, LocalDateTime.now().plusSeconds(90));
         when(jdbc.queryForList(contains("FROM dbo.qr_sessions"), eq(QR_HASH))).thenReturn(List.of(revokedRow));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkIn(requestBody, employeeRequest()));
 
-        assertEquals("QR_REVOKED", ex.getCode());
+        assertEquals("QR_REVOKED", ex.code());
         assertEquals("QR đã bị thu hồi.", ex.getMessage());
     }
 
@@ -136,10 +143,10 @@ class AttendanceQrValidationTest {
         var checkOutQr = createQrRow(SHIFT_ID, AREA_ID, "CHECK_OUT", false, LocalDateTime.now().plusSeconds(90));
         when(jdbc.queryForList(contains("FROM dbo.qr_sessions"), eq(QR_HASH))).thenReturn(List.of(checkOutQr));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkIn(requestBody, employeeRequest()));
 
-        assertEquals("QR_WRONG_TYPE", ex.getCode());
+        assertEquals("QR_WRONG_TYPE", ex.code());
         assertEquals("Bạn đang dùng QR check-out để check-in.", ex.getMessage());
     }
 
@@ -148,10 +155,10 @@ class AttendanceQrValidationTest {
         var checkInQr = createQrRow(SHIFT_ID, AREA_ID, "CHECK_IN", false, LocalDateTime.now().plusSeconds(90));
         when(jdbc.queryForList(contains("FROM dbo.qr_sessions"), eq(QR_HASH))).thenReturn(List.of(checkInQr));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkOut(requestBody, employeeRequest()));
 
-        assertEquals("QR_WRONG_TYPE", ex.getCode());
+        assertEquals("QR_WRONG_TYPE", ex.code());
         assertEquals("Bạn đang dùng QR check-in để check-out.", ex.getMessage());
     }
 
@@ -165,10 +172,10 @@ class AttendanceQrValidationTest {
         when(jdbc.queryForList(contains("WHERE ws.employee_id = ? AND ws.work_date = ?"), eq(EMPLOYEE_ID), any()))
                 .thenReturn(List.of(scheduleRow));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkIn(requestBody, employeeRequest()));
 
-        assertEquals("WRONG_SHIFT", ex.getCode());
+        assertEquals("WRONG_SHIFT", ex.code());
         assertEquals("QR không thuộc ca làm của bạn.", ex.getMessage());
     }
 
@@ -183,10 +190,10 @@ class AttendanceQrValidationTest {
         when(jdbc.queryForList(contains("WHERE ws.employee_id = ? AND ws.work_date = ?"), eq(EMPLOYEE_ID), any()))
                 .thenReturn(List.of(scheduleRow));
 
-        var requestBody = new AttendanceController.AttendanceRequest(null, EMPLOYEE_ID, QR_TOKEN, null, null, null, null, null, null);
+        var requestBody = attendanceRequest();
         AttendanceException ex = assertThrows(AttendanceException.class, () -> controller.checkIn(requestBody, employeeRequest()));
 
-        assertEquals("INVALID_LOCATION", ex.getCode());
+        assertEquals("INVALID_LOCATION", ex.code());
         assertTrue(ex.getMessage().contains("Kho hàng"));
         assertTrue(ex.getMessage().contains("Khu thu ngân"));
     }

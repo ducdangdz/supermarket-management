@@ -123,7 +123,11 @@ class _ProfessionalHomeState extends State<ProfessionalHome> {
         )
         .toList();
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F8FC),
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         toolbarHeight: 76,
         title: const AppBrand(),
         actions: [
@@ -200,14 +204,17 @@ class _ProfessionalHomeState extends State<ProfessionalHome> {
                     const SizedBox(height: 24),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(28),
+                      padding: const EdgeInsets.all(32),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(28),
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF103654), Color(0xFF176280)],
+                          colors: [Color(0xFF0A3358), Color(0xFF176E91), Color(0xFF0A8790)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
+                        boxShadow: [
+                          BoxShadow(color: AppColors.primary.withValues(alpha: .20), blurRadius: 24, offset: const Offset(0, 10)),
+                        ],
                       ),
                       child: LayoutBuilder(
                         builder: (context, c) {
@@ -228,8 +235,8 @@ class _ProfessionalHomeState extends State<ProfessionalHome> {
                                 'Xin chào, ${widget.employee.name}',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w800,
                                   height: 1.3,
                                 ),
                               ),
@@ -277,7 +284,7 @@ class _ProfessionalHomeState extends State<ProfessionalHome> {
                                 padding: const EdgeInsets.all(20),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withValues(alpha: .08),
-                                  borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color: Colors.white.withValues(alpha: .12),
                                   ),
@@ -437,6 +444,12 @@ class _ProfessionalHomeState extends State<ProfessionalHome> {
                                 width: (c.maxWidth - (cols - 1) * 16) / cols,
                                 child: Card(
                                   margin: EdgeInsets.zero,
+                                  elevation: 0,
+                                  color: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(color: m.color.withValues(alpha: .15)),
+                                  ),
                                   clipBehavior: Clip.antiAlias,
                                   child: InkWell(
                                     onTap: m.open,

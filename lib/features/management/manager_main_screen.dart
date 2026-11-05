@@ -1,6 +1,7 @@
 import 'package:provider/provider.dart';
 import '../../services/mock_data_service.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_workspace.dart';
 import 'dashboard/manager_dashboard_page.dart';
 import 'floor_plan/floor_plan_page.dart';
@@ -74,19 +75,22 @@ class _ManagerMainScreenState extends State<ManagerMainScreen> {
       WorkspaceDestination('Báo cáo', Icons.insights_outlined),
       WorkspaceDestination('Phê duyệt', Icons.fact_check_outlined),
     ],
-    child: Column(
+    child: DecoratedBox(
+      decoration: const BoxDecoration(color: AppColors.background),
+      child: Column(
       children: [
         if (context.watch<MockDataService>().isRemote)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            margin: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              gradient: const LinearGradient(colors: [Color(0xFF0F4C81), Color(0xFF176E91)]),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                const Icon(Icons.business_outlined, size: 16),
-                const SizedBox(width: 8),
+                const CircleAvatar(radius: 18, backgroundColor: Color(0x33FFFFFF), child: Icon(Icons.business_rounded, color: Colors.white, size: 19)),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     context.watch<MockDataService>().currentRoleCode == 'ADMIN'
@@ -95,7 +99,7 @@ class _ManagerMainScreenState extends State<ManagerMainScreen> {
                               .watch<MockDataService>()
                               .currentBranch
                               .branchName,
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w700),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -109,7 +113,7 @@ class _ManagerMainScreenState extends State<ManagerMainScreen> {
                   IconButton(
                     tooltip: 'Làm mới dữ liệu',
                     onPressed: refresh,
-                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.white),
                   ),
               ],
             ),
@@ -130,6 +134,7 @@ class _ManagerMainScreenState extends State<ManagerMainScreen> {
           ),
         ),
       ],
+      ),
     ),
   );
 }

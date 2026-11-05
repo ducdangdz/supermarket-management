@@ -1,19 +1,17 @@
 import 'dart:async';
-﻿import '../../core/widgets/app_workspace.dart';
-import '../../core/widgets/app_workspace.dart';
-import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../../core/services/device_identity_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_error.dart';
 import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/app_workspace.dart';
 import '../../core/widgets/empty_state.dart';
+import '../auth/data/account_auth_api.dart';
 import 'location/location_service.dart';
 import 'qr_scanner_page.dart';
 
@@ -65,7 +63,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
   String get _base {
     const override = String.fromEnvironment('API_BASE_URL');
     if (override.isNotEmpty) return override;
-    return kIsWeb ? 'http://localhost:8080/api' : 'http://10.0.2.2:8080/api';
+    return accountApiBaseUrl;
   }
 
   String _dateText(DateTime value) =>
@@ -356,14 +354,17 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F4C6E), Color(0xFF19799A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: AppColors.primary.withValues(alpha: 0.20),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -374,14 +375,14 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
           Row(
             children: [
               CircleAvatar(
-                radius: 26,
-                backgroundColor: AppColors.primaryLight,
+                radius: 28,
+                backgroundColor: Colors.white.withValues(alpha: .18),
                 child: Text(
                   initials,
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -393,9 +394,9 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
                     Text(
                       widget.fullName,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -405,7 +406,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
                       widget.email,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: Color(0xFFD5EDF6),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -416,7 +417,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: AppColors.divider),
+          Divider(height: 1, color: Colors.white.withValues(alpha: .20)),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -425,20 +426,20 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
               _buildInfoBadge(
                 Icons.badge_outlined,
                 widget.roleName.isNotEmpty ? widget.roleName : 'Nhân viên',
-                AppColors.primary,
-                AppColors.primaryLight,
+                const Color(0xFF0F4C6E),
+                Colors.white,
               ),
               _buildInfoBadge(
                 Icons.store_outlined,
                 branch,
-                AppColors.secondary,
-                const Color(0xFFE8F5E9),
+                const Color(0xFF0F4C6E),
+                const Color(0xFFDDF6F7),
               ),
               _buildInfoBadge(
                 Icons.pin_outlined,
                 'ID: #${widget.employeeId}',
-                AppColors.textSecondary,
-                const Color(0xFFF3F4F6),
+                const Color(0xFF0F4C6E),
+                const Color(0xFFE7F1F6),
               ),
             ],
           ),
@@ -803,7 +804,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: checkedIn ? null : () => _startAttendanceFlow(s, true),
+                      onPressed: checkedIn ? null : () => _attendance(s, true),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.secondary,
                         disabledBackgroundColor: Colors.grey.shade200,
@@ -824,7 +825,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
                     child: OutlinedButton.icon(
                       onPressed: !checkedIn || checkedOut
                           ? null
-                          : () => _startAttendanceFlow(s, false),
+                          : () => _attendance(s, false),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,
                         side: BorderSide(
@@ -979,9 +980,12 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
   }
 }
 
-// ==========================================
-// 4-STEP CHECK-IN / CHECK-OUT WIZARD MODAL
-// ==========================================
+/*
+ * Retired merge artifact: the current attendance flow above is the only
+ * supported route. It requires camera QR scanning and a fresh GPS reading;
+ * this legacy wizard accepted manual QR input and must never be reachable.
+ */
+/*
 class _AttendanceWizardSheet extends StatefulWidget {
   const _AttendanceWizardSheet({
     required this.schedule,
@@ -1759,6 +1763,7 @@ class _AttendanceWizardSheetState extends State<_AttendanceWizardSheet> {
     );
   }
 }
+*/
 
 // Helper methods
 List<Map<String, dynamic>> _asList(String body) {
@@ -1790,3 +1795,6 @@ void _ensureOk(http.Response response) {
     );
   }
 }
+
+String _message(Object error) =>
+    error.toString().replaceFirst('Bad state: ', '');

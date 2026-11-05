@@ -1,11 +1,13 @@
-import '../../core/widgets/app_workspace.dart';
-import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../core/services/device_identity_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_workspace.dart';
+import '../auth/data/account_auth_api.dart';
 
 class ManagementWorkspace extends StatefulWidget {
   const ManagementWorkspace({
@@ -35,7 +37,7 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
   String get _base {
     const override = String.fromEnvironment('API_BASE_URL');
     if (override.isNotEmpty) return override;
-    return kIsWeb ? 'http://localhost:8080/api' : 'http://10.0.2.2:8080/api';
+    return accountApiBaseUrl;
   }
 
   Map<String, String> get _headers => {
@@ -240,8 +242,18 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
       if (_canQr) const WorkspaceDestination('Mã QR', Icons.qr_code_rounded),
     ],
     child: Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Quản lý vận hành'),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Quản lý vận hành', style: TextStyle(fontWeight: FontWeight.w800)),
+            Text('Lập lịch và điều phối ca làm', style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade500)),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: _load,
@@ -266,77 +278,82 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
     ),
   );
   Widget _assignPage() => ListView(
-    padding: const EdgeInsets.all(20),
+    padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
     children: [
-      Text(
-        'Phân công lịch làm',
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
-      const SizedBox(height: 6),
-      Text('Người thực hiện: ${widget.fullName}'),
+      _pageHeading('Phân công lịch làm', 'Chọn nhân sự, ca làm và khu vực để tạo lịch nhanh chóng.'),
+      const SizedBox(height: 20),
+      _summaryStrip(),
       const SizedBox(height: 20),
       _selectionCard(showEmployee: true),
-      const SizedBox(height: 16),
+      const SizedBox(height: 20),
       FilledButton.icon(
         onPressed: _createSchedule,
         icon: const Icon(Icons.save_outlined),
         label: const Text('Lưu phân công'),
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(54),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       ),
     ],
   );
   Widget _assignedPage() => ListView(
-    padding: const EdgeInsets.all(20),
+    padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
     children: [
-      Text('Lịch đã phân', style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 6),
-      const Text('Hiển thị lịch từ hôm nay đến 30 ngày tới.'),
-      const SizedBox(height: 12),
-      if (_assignedSchedules.isEmpty) const Text('Chưa có lịch nào.'),
+      _pageHeading('Lịch đã phân', 'Theo dõi các ca đã tạo từ hôm nay đến 30 ngày tới.'),
+      const SizedBox(height: 20),
+      if (_assignedSchedules.isEmpty) _emptyPanel('Chưa có lịch nào', 'Các ca được phân công sẽ xuất hiện ở đây.'),
       ..._assignedSchedules.map((s) {
         final cancelled = s['schedule_status'] == 'CANCELLED';
-        return Card(
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: cancelled ? const Color(0xFFFECACA) : AppColors.divider),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .025), blurRadius: 14, offset: const Offset(0, 5))],
+          ),
           child: ListTile(
-            leading: Icon(cancelled ? Icons.event_busy : Icons.event_note),
-            title: Text('${s['work_date']} · ${s['shift_name']}'),
-            subtitle: Text(
-              '${s['full_name']} · ${s['employee_code']}\n${s['area_name']} · ${s['floor_name']}\n${s['start_time']} - ${s['end_time']} · ${cancelled ? 'ĐÃ HỦY' : 'ĐÃ PHÂN'}',
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            leading: Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(color: cancelled ? const Color(0xFFFEF2F2) : AppColors.primaryLight, borderRadius: BorderRadius.circular(14)),
+              child: Icon(cancelled ? Icons.event_busy_rounded : Icons.event_available_rounded, color: cancelled ? AppColors.statusAbsent : AppColors.primary),
+            ),
+            title: Text('${s['work_date']} · ${s['shift_name']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text('${s['full_name']} · ${s['employee_code']}\n${s['area_name']} · ${s['floor_name']}  •  ${s['start_time']} - ${s['end_time']}', style: const TextStyle(height: 1.5)),
             ),
             isThreeLine: true,
             trailing: cancelled
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.cancel_outlined),
-                    tooltip: 'Hủy lịch',
-                    onPressed: () => _cancelSchedule(s),
-                  ),
+                ? const _StatusPill(label: 'ĐÃ HỦY', color: AppColors.statusAbsent)
+                : IconButton(icon: const Icon(Icons.cancel_outlined), tooltip: 'Hủy lịch', onPressed: () => _cancelSchedule(s)),
           ),
         );
       }),
     ],
   );
   Widget _qrPage() => ListView(
-    padding: const EdgeInsets.all(20),
+    padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
     children: [
-      Text(
-        'Tạo mã QR chấm công',
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
-      const SizedBox(height: 6),
-      const Text(
-        'Mỗi mã có hiệu lực 2 phút. Gửi mã này cho nhân viên đúng khu vực.',
+      _pageHeading('Tạo mã QR chấm công', 'Mã QR có hiệu lực trong 2 phút và chỉ dùng cho đúng ca, đúng khu vực.'),
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: const Color(0xFFEAF4FF), borderRadius: BorderRadius.circular(18)),
+        child: Row(children: [
+          const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.today_rounded, color: AppColors.primary)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Ngày hiệu lực', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text('Hôm nay · $_todayText', style: const TextStyle(color: AppColors.textSecondary)),
+          ])),
+        ]),
       ),
       const SizedBox(height: 16),
-      Card(
-        child: ListTile(
-          leading: const Icon(Icons.event_available),
-          title: const Text('Ngày hiệu lực'),
-          subtitle: Text('Hôm nay · $_todayText'),
-        ),
-      ),
-      const SizedBox(height: 12),
       _selectionCard(showEmployee: false),
-      const SizedBox(height: 16),
+      const SizedBox(height: 20),
       Row(
         children: [
           Expanded(
@@ -359,10 +376,16 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
     ],
   );
   Widget _selectionCard({required bool showEmployee}) => Card(
+    elevation: 0,
+    color: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppColors.divider)),
     child: Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(showEmployee ? 'Thông tin phân công' : 'Thiết lập phiên QR', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 18),
           if (showEmployee) ...[
             _drop<int>(
               'Nhân viên',
@@ -420,7 +443,10 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
     isExpanded: true,
     decoration: InputDecoration(
       labelText: label,
-      border: const OutlineInputBorder(),
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.divider)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.divider)),
     ),
     items: items.map((item) {
       final raw = item[key];
@@ -431,6 +457,54 @@ class _ManagementWorkspaceState extends State<ManagementWorkspace> {
       );
     }).toList(),
     onChanged: onChanged,
+  );
+
+  Widget _pageHeading(String title, String subtitle) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+      const SizedBox(height: 6),
+      Text(subtitle, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4)),
+    ],
+  );
+
+  Widget _summaryStrip() => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(colors: [Color(0xFF0F4C6E), Color(0xFF176E91)]),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(children: [
+      const CircleAvatar(radius: 23, backgroundColor: Color(0x33FFFFFF), child: Icon(Icons.admin_panel_settings_outlined, color: Colors.white)),
+      const SizedBox(width: 14),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Xin chào, ${widget.fullName}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 3),
+        Text('${_employees.length} nhân viên sẵn sàng phân ca · ${_assignedSchedules.length} lịch đã tạo', style: const TextStyle(color: Color(0xFFD6F0FA), fontSize: 12)),
+      ])),
+    ]),
+  );
+
+  Widget _emptyPanel(String title, String detail) => Container(
+    padding: const EdgeInsets.all(28),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.divider)),
+    child: Column(children: [
+      const Icon(Icons.calendar_month_outlined, size: 38, color: AppColors.textMuted),
+      const SizedBox(height: 10), Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 4), Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
+    ]),
+  );
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+  final String label;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(color: color.withValues(alpha: .1), borderRadius: BorderRadius.circular(20)),
+    child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
   );
 }
 

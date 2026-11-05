@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../app.dart';
 import '../../core/network/team_api.dart';
 import '../../models/employee.dart';
 import '../../services/mock_data_service.dart';
 import '../backend/backend_workspace.dart';
+import '../backend/employee_workspace.dart';
 import 'professional_home.dart';
 import '../management/manager_main_screen.dart';
 import '../reports/reports_main_screen.dart';
@@ -154,8 +154,18 @@ class _AuthenticatedTeamHomeState extends State<AuthenticatedTeamHome> {
           onRefresh: refresh,
           onManager: (index) => open(ManagerMainScreen(initialIndex: index)),
           onReports: () => open(const ReportsMainScreen()),
-          onEmployee: () =>
-              open(EmployeeApp(employee: employee, onLogout: logout)),
+          onEmployee: () => open(
+            EmployeeWorkspace(
+              employeeId: widget.session.employeeId,
+              idToken: widget.session.idToken,
+              fullName: widget.session.fullName,
+              email: widget.session.email,
+              roleCode: widget.session.roleCode,
+              roleName: widget.session.roleName,
+              branchName: employee?.branch,
+              onLogout: logout,
+            ),
+          ),
         );
       },
     ),

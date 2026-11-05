@@ -1,4 +1,4 @@
-﻿package com.smartmarket.hrm.attendance;
+package com.smartmarket.hrm.attendance;
 
 import com.smartmarket.hrm.auth.AccessControl;
 import com.smartmarket.hrm.auth.CurrentUser;

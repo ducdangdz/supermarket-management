@@ -37,19 +37,31 @@ class AppWorkspace extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 236,
-                  decoration: const BoxDecoration(
+                  width: 248,
+                  decoration: BoxDecoration(
                     color: AppColors.surface,
-                    border: Border(right: BorderSide(color: AppColors.divider)),
+                    border: const Border(right: BorderSide(color: AppColors.divider)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: .025),
+                        blurRadius: 18,
+                        offset: const Offset(3, 0),
+                      ),
+                    ],
                   ),
                   child: Material(
                     color: AppColors.surface,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(20, 26, 16, 28),
-                          child: AppBrand(),
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(14, 18, 14, 24),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight.withValues(alpha: .62),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const AppBrand(),
                         ),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -70,27 +82,17 @@ class AppWorkspace extends StatelessWidget {
                             children: [
                               for (var i = 0; i < destinations.length; i++)
                                 Padding(
-                                  padding: const EdgeInsets.only(bottom: 5),
+                                  padding: const EdgeInsets.only(bottom: 6),
                                   child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 13),
                                     selected: i == selectedIndex,
-                                    selectedTileColor: AppColors.primaryLight,
-                                    selectedColor: AppColors.primary,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    leading: Icon(
-                                      destinations[i].icon,
-                                      size: 21,
-                                    ),
-                                    title: Text(
-                                      destinations[i].label,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: i == selectedIndex
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                    ),
+                                    selectedTileColor: AppColors.primary,
+                                    selectedColor: Colors.white,
+                                    iconColor: i == selectedIndex ? Colors.white : AppColors.textSecondary,
+                                    textColor: i == selectedIndex ? Colors.white : AppColors.textPrimary,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                                    leading: Icon(destinations[i].icon, size: 20),
+                                    title: Text(destinations[i].label, style: TextStyle(fontSize: 13, fontWeight: i == selectedIndex ? FontWeight.w700 : FontWeight.w500)),
                                     onTap: () => onSelected(i),
                                   ),
                                 ),
