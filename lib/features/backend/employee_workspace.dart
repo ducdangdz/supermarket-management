@@ -189,11 +189,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
             ),
           ],
         ),
-        body: _loading
-            ? const AppLoading(message: 'Đang tải thông tin ca làm việc...')
-            : _error != null
-            ? AppError(message: _error!, onRetry: _load)
-            : IndexedStack(
+        body: IndexedStack(
                 index: _tab,
                 children: [_buildOverview(), _buildScheduleTab(), _buildHistoryTab()],
               ),
@@ -218,6 +214,17 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
           // 1. Thẻ thông tin nhân viên, vai trò, chi nhánh
           _buildEmployeeHeaderCard(),
           const SizedBox(height: 20),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: AppLoading(message: 'Đang tải thông tin ca làm việc...'),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: AppError(message: _error!, onRetry: _load),
+            )
+          else ...[
 
           // 2. Ca làm hôm nay tiêu đề
           Row(
@@ -338,6 +345,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
               ],
             ),
           ),
+          ],
         ],
       ),
     );
@@ -485,6 +493,12 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
   // TAB 2: LỊCH LÀM VIỆC (RESPONSIVE PHONES & WEB)
   // ==========================================
   Widget _buildScheduleTab() {
+    if (_loading) {
+      return const AppLoading(message: 'Đang tải lịch làm việc...');
+    }
+    if (_error != null) {
+      return AppError(message: _error!, onRetry: _load);
+    }
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.primary,
@@ -855,6 +869,12 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
   // TAB 3: LỊCH SỬ CHẤM CÔNG
   // ==========================================
   Widget _buildHistoryTab() {
+    if (_loading) {
+      return const AppLoading(message: 'Đang tải lịch sử chấm công...');
+    }
+    if (_error != null) {
+      return AppError(message: _error!, onRetry: _load);
+    }
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.primary,
