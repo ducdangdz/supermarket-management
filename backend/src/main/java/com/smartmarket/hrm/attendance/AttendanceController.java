@@ -1,4 +1,4 @@
-package com.smartmarket.hrm.attendance;
+﻿package com.smartmarket.hrm.attendance;
 
 import com.smartmarket.hrm.auth.AccessControl;
 import com.smartmarket.hrm.auth.CurrentUser;
@@ -102,11 +102,43 @@ public class AttendanceController {
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
         LocalDateTime expiry = LocalDateTime.now().plusSeconds(body.expiresInSeconds());
         CurrentUser current = access.current(request);
+
+        // Thu hồi các QR cũ còn hiệu lực của cùng ca, khu vực và loại session
+        jdbc.update("""
+                UPDATE dbo.qr_sessions
+                SET is_revoked = 1
+                WHERE shift_id = ? AND work_area_id = ? AND session_type = ? AND is_revoked = 0 AND expires_at > ?
+                """, body.shiftId(), body.workAreaId(), body.sessionType(), LocalDateTime.now());
+
         jdbc.update("""
                 INSERT INTO dbo.qr_sessions (shift_id, work_area_id, session_type, token_hash, expires_at, issued_by)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, body.shiftId(), body.workAreaId(), body.sessionType(), EvidenceStorage.sha256Hex(token), expiry, current.employeeId());
         return ResponseEntity.status(HttpStatus.CREATED).body(new QrSessionResponse(token, expiry, body.sessionType()));
+    }
+
+    @PostMapping("/management/qr-sessions/revoke")
+    public ResponseEntity<Map<String, Object>> revokeQrSession(@RequestBody RevokeQrRequest body, HttpServletRequest request) {
+        access.requireManagerOrAdmin(request);
+        String tokenHash;
+        if (body != null && body.token() != null && !body.token().isBlank()) {
+            tokenHash = EvidenceStorage.sha256Hex(body.token().trim());
+        } else if (body != null && body.qrSessionId() != null) {
+            tokenHash = null;
+        } else {
+            throw new IllegalArgumentException("Cần cung cấp token hoặc qrSessionId để thu hồi.");
+        }
+
+        int updated;
+        if (tokenHash != null) {
+            updated = jdbc.update("UPDATE dbo.qr_sessions SET is_revoked = 1 WHERE token_hash = ?", tokenHash);
+        } else {
+            updated = jdbc.update("UPDATE dbo.qr_sessions SET is_revoked = 1 WHERE qr_session_id = ?", body.qrSessionId());
+        }
+        if (updated == 0) {
+            throw new AttendanceException("QR_NOT_FOUND", "Không tìm thấy mã QR để thu hồi.");
+        }
+        return ResponseEntity.ok(Map.of("message", "QR đã bị thu hồi.", "revoked", true));
     }
 
     /** Lịch làm hôm nay của người đang đăng nhập, kèm yêu cầu QR/GPS/ảnh và trạng thái chấm công. */
@@ -266,14 +298,14 @@ public class AttendanceController {
                 """, EvidenceStorage.sha256Hex(token.trim()));
         if (rows.isEmpty()) throw new AttendanceException("QR_INVALID", "Mã QR không hợp lệ hoặc không do hệ thống tạo.");
         Map<String, Object> row = rows.getFirst();
-        if (flag(row.get("is_revoked"))) throw new AttendanceException("QR_REVOKED", "Mã QR đã bị quản lý thu hồi.");
+        if (flag(row.get("is_revoked"))) throw new AttendanceException("QR_REVOKED", "QR đã bị thu hồi.");
         if (!now.isBefore(toDateTime(row.get("expires_at")))) {
-            throw new AttendanceException("QR_EXPIRED", "Mã QR đã hết hạn. Hãy yêu cầu quản lý tạo mã mới.");
+            throw new AttendanceException("QR_EXPIRED", "QR đã hết hạn.");
         }
         if (!type.equals(row.get("session_type"))) {
             throw new AttendanceException("QR_WRONG_TYPE", CHECK_IN.equals(type)
-                    ? "Đây là mã QR check-out, không dùng để check-in."
-                    : "Đây là mã QR check-in, không dùng để check-out.");
+                    ? "Bạn đang dùng QR check-out để check-in."
+                    : "Bạn đang dùng QR check-in để check-out.");
         }
         return new QrSession(id(row.get("qr_session_id")), id(row.get("shift_id")), id(row.get("work_area_id")), (String) row.get("area_name"));
     }
@@ -310,7 +342,7 @@ public class AttendanceController {
 
         List<Map<String, Object>> sameShift = candidates.stream().filter(s -> id(s.get("shift_id")) == qr.shiftId()).toList();
         if (sameShift.isEmpty()) {
-            throw new AttendanceException("WRONG_SHIFT", "Mã QR không thuộc ca làm của bạn hôm nay.");
+            throw new AttendanceException("WRONG_SHIFT", "QR không thuộc ca làm của bạn.");
         }
         return sameShift.stream()
                 .filter(s -> id(s.get("work_area_id")) == qr.workAreaId())
@@ -486,6 +518,7 @@ public class AttendanceController {
     public record QrSessionRequest(@NotNull Long shiftId, @NotNull Long workAreaId, @NotBlank String sessionType,
             @NotNull Integer expiresInSeconds, Long issuedBy) { }
     public record QrSessionResponse(String token, LocalDateTime expiresAt, String sessionType) { }
+    public record RevokeQrRequest(String token, Long qrSessionId) { }
 
     /**
      * Dữ liệu chấm công app gửi lên. scheduleId/employeeId có thể bỏ trống (backend tự xác định theo QR
