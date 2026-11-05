@@ -189,7 +189,7 @@ class _EmployeeAttendanceReportScreenState
               // Chọn Nhân viên
               Expanded(
                 child: DropdownButtonFormField<int?>(
-                  value: _selectedEmployeeId,
+                  initialValue: _selectedEmployeeId,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Nhân viên',
@@ -266,7 +266,7 @@ class _EmployeeAttendanceReportScreenState
               // Ca làm
               Expanded(
                 child: DropdownButtonFormField<int?>(
-                  value: _selectedShiftId,
+                  initialValue: _selectedShiftId,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Ca làm',
@@ -297,7 +297,7 @@ class _EmployeeAttendanceReportScreenState
               // Khu vực
               Expanded(
                 child: DropdownButtonFormField<int?>(
-                  value: _selectedWorkAreaId,
+                  initialValue: _selectedWorkAreaId,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Khu vực',
@@ -328,7 +328,7 @@ class _EmployeeAttendanceReportScreenState
               // Trạng thái
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _selectedStatus,
+                  initialValue: _selectedStatus,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Trạng thái',
