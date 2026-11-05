@@ -1,4 +1,7 @@
 import 'dart:async';
+﻿import '../../core/widgets/app_workspace.dart';
+import '../../core/widgets/app_workspace.dart';
+import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -55,6 +58,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer ${widget.idToken}',
+    'X-Device-Id': DeviceIdentityService.currentId,
     'Content-Type': 'application/json',
   };
 
@@ -108,24 +112,46 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
     }
   }
 
-  Future<void> _startAttendanceFlow(
-    Map<String, dynamic> schedule,
-    bool isCheckIn,
-  ) async {
-    final updated = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _AttendanceWizardSheet(
-        schedule: schedule,
-        isCheckIn: isCheckIn,
-        employeeId: widget.employeeId,
-        headers: _headers,
-        baseUrl: _base,
+  Future<void> _attendance(Map<String, dynamic> schedule, bool checkIn) async {
+    // Chỉ cho phép quét QR bằng camera ở bản chính thức; không nhập mã thủ công.
+    final token = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => QrScannerPage(
+          title: checkIn ? 'Quét QR Check-in' : 'Quét QR Check-out',
+        ),
       ),
     );
-    if (updated == true) {
+    if (token == null || token.trim().isEmpty) return;
+    try {
+      // GPS bắt buộc: luôn đo vị trí mới ngay lúc chấm công, không dùng vị trí cũ.
+      // GPS tắt / từ chối quyền / sai số lớn / giả lập → GpsException với thông báo tiếng Việt.
+      final location = await GpsService.instance.getFreshLocation();
+      final response = await http.post(
+        Uri.parse('$_base/attendance/${checkIn ? 'check-in' : 'check-out'}'),
+        headers: _headers,
+        body: jsonEncode({
+          'scheduleId': schedule['scheduleId'],
+          'employeeId': widget.employeeId,
+          'qrToken': token,
+          ...location.toJson(),
+          'clientTime': isoWithOffset(DateTime.now()),
+        }),
+      );
+      _ensureOk(response);
+      if (!mounted) return;
+      final data = _asMap(response.body);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(data['message']?.toString() ?? 'Chấm công thành công.'),
+        ),
+      );
       _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_message(e))));
+      }
     }
   }
 

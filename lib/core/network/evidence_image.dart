@@ -1,5 +1,6 @@
 import 'team_api.dart';
 import '../../features/auth/data/account_auth_api.dart';
+import '../services/device_identity_service.dart';
 
 String evidenceUrl(String path) => path.startsWith('/')
     ? Uri.parse(accountApiBaseUrl).resolve(path).toString()
@@ -12,5 +13,8 @@ Map<String, String>? evidenceHeaders(String path) {
       uri.origin != base.origin ||
       TeamApi.active == null)
     return null;
-  return {'Authorization': 'Bearer ${TeamApi.active!.token}'};
+  return {
+    'Authorization': 'Bearer ${TeamApi.active!.token}',
+    'X-Device-Id': DeviceIdentityService.currentId,
+  };
 }

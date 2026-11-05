@@ -42,6 +42,8 @@ Kết quả trả về `token`. Đưa token này vào QR; backend chỉ lưu SHA
   "latitude": 10.7769,
   "longitude": 106.7009,
   "accuracyMeters": 15,
+  "locationCapturedAt": "2026-10-21T07:54:58.000+07:00",
+  "isMocked": false,
   "clientTime": "2026-10-21T07:55:00.000+07:00",
   "deviceInfo": "Android 14 · Samsung SM-A515F",
   "evidence": { "fileHash": "<sha256 từ bước 3>", "capturedAt": "2026-10-21T07:54:50.000+07:00" }
@@ -49,6 +51,11 @@ Kết quả trả về `token`. Đưa token này vào QR; backend chỉ lưu SHA
 ```
 
 `scheduleId` và `employeeId` không bắt buộc: backend tự tìm lịch hôm nay của người đăng nhập theo ca và khu vực của QR.
+
+**GPS luôn bắt buộc** (không phụ thuộc cờ `require_location` của ca): phải có `latitude`, `longitude`,
+`accuracyMeters` ≤ 100 m, `locationCapturedAt` cách `clientTime` không quá 120 giây, `isMocked` khác `true`,
+và nằm trong `radius_meters` của khu vực (mặc định 100 m). Khu vực phải có tọa độ
+(chạy `database/attendance_demo_data.sql` để có dữ liệu mẫu).
 
 Thành công:
 
@@ -75,7 +82,12 @@ Bị từ chối (HTTP 400): `{ "code": "QR_EXPIRED", "message": "Mã QR đã h�
 | `SCHEDULE_REQUIRED` | Có nhiều ca, không có QR để xác định ca |
 | `WRONG_SHIFT` | QR không thuộc ca của nhân viên |
 | `INVALID_LOCATION` | QR sai khu vực, hoặc GPS ngoài bán kính khu vực |
-| `LOCATION_REQUIRED` / `GPS_INACCURATE` | Ca yêu cầu GPS nhưng không có / sai số > 100 m |
+| `LOCATION_REQUIRED` | Không gửi tọa độ GPS |
+| `GPS_INVALID` | Tọa độ ngoài phạm vi hợp lệ |
+| `GPS_INACCURATE` | Không có sai số hoặc sai số > 100 m |
+| `GPS_STALE` | Thiếu thời gian đo GPS hoặc vị trí đã cũ (> 120 giây) |
+| `GPS_MOCKED` | Thiết bị báo vị trí giả lập (`isMocked = true`) |
+| `AREA_LOCATION_NOT_CONFIGURED` | Khu vực làm việc chưa có tọa độ |
 | `CHECK_IN_TOO_EARLY` | Check-in sớm hơn `check_in_early_minutes` |
 | `ALREADY_CHECKED_IN` / `ALREADY_CHECKED_OUT` | Đã chấm công rồi |
 | `NOT_CHECKED_IN` | Check-out khi chưa check-in |

@@ -43,22 +43,10 @@
 					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
-					<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
-</dict>
+				</dict>
 			</array>
-			<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
-</dict>
-		<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
-</dict>
+		</dict>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -81,6 +69,6 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Ứng dụng cần camera để quét QR và chụp ảnh bằng chứng chấm công.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Ứng dụng cần vị trí để xác nhận khu vực chấm công.</string>
+	<string>Nhân viên bắt buộc bật vị trí GPS để vào hệ thống và để xác nhận bạn đang ở đúng khu vực làm việc khi check-in/check-out.</string>
 </dict>
 </plist>

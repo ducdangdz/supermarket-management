@@ -6,10 +6,19 @@ import '../../../core/network/team_api.dart';
 import '../../../models/models.dart';
 
 class ShiftQrDialog extends StatefulWidget {
-  const ShiftQrDialog({super.key, required this.shift, this.api, this.clock});
+  const ShiftQrDialog({
+    super.key,
+    required this.shift,
+    this.api,
+    this.clock,
+    this.defaultExpiresInSeconds = 90,
+  });
+
   final Shift shift;
   final TeamApi? api;
   final DateTime Function()? clock;
+  final int defaultExpiresInSeconds;
+
   @override
   State<ShiftQrDialog> createState() => _ShiftQrDialogState();
 }
@@ -19,18 +28,23 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
   List<Map<String, dynamic>> areas = [];
   int? areaId;
   String type = 'CHECK_IN';
+  late int expiresInSeconds;
   String? token, error;
   DateTime? expiresAt;
   bool loading = true, busy = false;
   Timer? timer;
+
   DateTime get now => widget.clock?.call() ?? DateTime.now();
+
   int get remaining => expiresAt == null
       ? 0
-      : expiresAt!.difference(now).inSeconds.clamp(0, 300);
+      : expiresAt!.difference(now).inSeconds.clamp(0, 3600);
+
   @override
   void initState() {
     super.initState();
     api = widget.api ?? TeamApi.active!;
+    expiresInSeconds = widget.defaultExpiresInSeconds;
     load();
   }
 
@@ -45,13 +59,14 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
           .map((e) => Map<String, dynamic>.from(e))
           .where((a) => a['branch_id'] == widget.shift.branchId)
           .toList();
-      if (mounted)
+      if (mounted) {
         setState(() {
           areas = filtered;
           areaId = areas.isEmpty
               ? null
               : (areas.first['work_area_id'] as num).toInt();
         });
+      }
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -80,13 +95,14 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
           'shiftId': widget.shift.shiftId,
           'workAreaId': areaId,
           'sessionType': type,
-          'expiresInSeconds': 300,
+          'expiresInSeconds': expiresInSeconds,
         },
       );
       final value = data['token'];
       final expiry = DateTime.tryParse(data['expiresAt']?.toString() ?? '');
-      if (value is! String || value.isEmpty || expiry == null)
+      if (value is! String || value.isEmpty || expiry == null) {
         throw StateError('Máy chủ chưa trả về mã QR hợp lệ.');
+      }
       if (!mounted) return;
       setState(() {
         token = value;
@@ -96,6 +112,27 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
         if (mounted) setState(() {});
         if (remaining == 0) timer?.cancel();
       });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> revoke() async {
+    if (busy || token == null) return;
+    setState(() => busy = true);
+    try {
+      await api.request(
+        '/management/qr-sessions/revoke',
+        method: 'POST',
+        body: {'token': token},
+      );
+      reset();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã thu hồi mã QR thành công.')),
+      );
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -125,7 +162,7 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Chọn đúng khu vực và loại QR. Mã có hiệu lực 5 phút kể từ lúc tạo.',
+              'Chọn ca, khu vực, loại QR và thời hạn. Có thể thu hồi mã khi cần đổi mã mới.',
               style: TextStyle(fontSize: 12, color: Colors.blueGrey),
             ),
             const SizedBox(height: 20),
@@ -180,6 +217,37 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
                         reset();
                       }),
               ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                initialValue: expiresInSeconds,
+                decoration: const InputDecoration(
+                  labelText: 'Thời hạn mã QR',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 60,
+                    child: Text('60 giây (1 phút)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 90,
+                    child: Text('90 giây (1.5 phút)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 120,
+                    child: Text('120 giây (2 phút)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 300,
+                    child: Text('300 giây (5 phút)'),
+                  ),
+                ],
+                onChanged: busy
+                    ? null
+                    : (v) => setState(() {
+                        expiresInSeconds = v ?? 90;
+                        reset();
+                      }),
+              ),
             ],
             if (error != null) ...[
               const SizedBox(height: 16),
@@ -226,26 +294,47 @@ class _ShiftQrDialogState extends State<ShiftQrDialog> {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'Thử trên cùng máy: sao chép mã, mở tài khoản nhân viên ở cửa sổ khác và chọn nhập mã thủ công.',
+                      'Nhân viên quét mã bằng camera trên ứng dụng để chấm công.',
                       style: TextStyle(fontSize: 12, color: Colors.blueGrey),
                     ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: remaining == 0
-                          ? null
-                          : () async {
-                              await Clipboard.setData(
-                                ClipboardData(text: token!),
-                              );
-                              if (context.mounted)
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Đã sao chép mã QR.'),
-                                  ),
-                                );
-                            },
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      label: const Text('Sao chép mã'),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: remaining == 0
+                              ? null
+                              : () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: token!),
+                                  );
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Đã sao chép mã QR.'),
+                                      ),
+                                    );
+                                  }
+                                },
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                          label: const Text('Sao chép mã'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: remaining == 0 || busy ? null : revoke,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          icon: const Icon(
+                            Icons.block,
+                            size: 18,
+                            color: Colors.red,
+                          ),
+                          label: const Text('Thu hồi mã'),
+                        ),
+                      ],
                     ),
                   ],
                 ),

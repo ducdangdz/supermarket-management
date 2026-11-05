@@ -1,4 +1,4 @@
-package com.smartmarket.hrm.attendance;
+﻿package com.smartmarket.hrm.attendance;
 
 import com.smartmarket.hrm.auth.AccessControl;
 import com.smartmarket.hrm.auth.CurrentUser;
@@ -43,7 +43,7 @@ import org.springframework.web.multipart.MultipartFile;
  *   <li>Lịch làm: nhân viên có lịch hôm nay, đúng ca, đúng khu vực của QR (sai khu vực → INVALID_LOCATION).</li>
  *   <li>Trạng thái: chưa check-in mới được check-in; đã check-in mới được check-out.</li>
  *   <li>Giờ vào: không quá sớm; quá {@code allowed_late_minutes} → LATE, ngược lại PRESENT.</li>
- *   <li>GPS (nếu ca yêu cầu): có tọa độ, sai số chấp nhận được, nằm trong bán kính khu vực.</li>
+ *   <li>GPS (luôn bắt buộc): có tọa độ hợp lệ, không giả lập, mới đo, sai số chấp nhận được, nằm trong bán kính khu vực.</li>
  *   <li>Ảnh bằng chứng (nếu ca yêu cầu): đã upload qua {@code POST /api/attendance/evidence} và chưa từng dùng.</li>
  * </ol>
  * Vi phạm bất kỳ bước nào ném {@link AttendanceException} kèm mã lỗi; giao dịch bị rollback nên không lưu gì.
@@ -56,6 +56,10 @@ public class AttendanceController {
     private static final int DEFAULT_RADIUS_METERS = 100;
     /** GPS có sai số lớn hơn ngưỡng này bị coi là không đáng tin cậy. */
     private static final double MAX_ACCURACY_METERS = 100;
+    /** Vị trí phải được đo trong khoảng này trước lúc gửi (giây), tránh dùng lại vị trí cũ. */
+    private static final long MAX_GPS_AGE_SECONDS = 120;
+    /** Sai lệch giờ cho phép giữa điện thoại và server khi app không gửi clientTime (giây). */
+    private static final long MAX_CLOCK_SKEW_SECONDS = 300;
     private static final String CHECK_IN = "CHECK_IN";
     private static final String CHECK_OUT = "CHECK_OUT";
 
@@ -98,11 +102,43 @@ public class AttendanceController {
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
         LocalDateTime expiry = LocalDateTime.now().plusSeconds(body.expiresInSeconds());
         CurrentUser current = access.current(request);
+
+        // Thu hồi các QR cũ còn hiệu lực của cùng ca, khu vực và loại session
+        jdbc.update("""
+                UPDATE dbo.qr_sessions
+                SET is_revoked = 1
+                WHERE shift_id = ? AND work_area_id = ? AND session_type = ? AND is_revoked = 0 AND expires_at > ?
+                """, body.shiftId(), body.workAreaId(), body.sessionType(), LocalDateTime.now());
+
         jdbc.update("""
                 INSERT INTO dbo.qr_sessions (shift_id, work_area_id, session_type, token_hash, expires_at, issued_by)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, body.shiftId(), body.workAreaId(), body.sessionType(), EvidenceStorage.sha256Hex(token), expiry, current.employeeId());
         return ResponseEntity.status(HttpStatus.CREATED).body(new QrSessionResponse(token, expiry, body.sessionType()));
+    }
+
+    @PostMapping("/management/qr-sessions/revoke")
+    public ResponseEntity<Map<String, Object>> revokeQrSession(@RequestBody RevokeQrRequest body, HttpServletRequest request) {
+        access.requireManagerOrAdmin(request);
+        String tokenHash;
+        if (body != null && body.token() != null && !body.token().isBlank()) {
+            tokenHash = EvidenceStorage.sha256Hex(body.token().trim());
+        } else if (body != null && body.qrSessionId() != null) {
+            tokenHash = null;
+        } else {
+            throw new IllegalArgumentException("Cần cung cấp token hoặc qrSessionId để thu hồi.");
+        }
+
+        int updated;
+        if (tokenHash != null) {
+            updated = jdbc.update("UPDATE dbo.qr_sessions SET is_revoked = 1 WHERE token_hash = ?", tokenHash);
+        } else {
+            updated = jdbc.update("UPDATE dbo.qr_sessions SET is_revoked = 1 WHERE qr_session_id = ?", body.qrSessionId());
+        }
+        if (updated == 0) {
+            throw new AttendanceException("QR_NOT_FOUND", "Không tìm thấy mã QR để thu hồi.");
+        }
+        return ResponseEntity.ok(Map.of("message", "QR đã bị thu hồi.", "revoked", true));
     }
 
     /** Lịch làm hôm nay của người đang đăng nhập, kèm yêu cầu QR/GPS/ảnh và trạng thái chấm công. */
@@ -211,7 +247,7 @@ public class AttendanceController {
             status = now.isAfter(shiftStart.plusMinutes(allowedLate)) ? "LATE" : "PRESENT";
         }
 
-        Double distance = checkLocation(schedule, body);
+        Double distance = checkLocation(schedule, body, now);
         String evidenceUrl = checkEvidence(schedule, body, current.employeeId());
         String note = buildNote(type, body);
 
@@ -262,14 +298,14 @@ public class AttendanceController {
                 """, EvidenceStorage.sha256Hex(token.trim()));
         if (rows.isEmpty()) throw new AttendanceException("QR_INVALID", "Mã QR không hợp lệ hoặc không do hệ thống tạo.");
         Map<String, Object> row = rows.getFirst();
-        if (flag(row.get("is_revoked"))) throw new AttendanceException("QR_REVOKED", "Mã QR đã bị quản lý thu hồi.");
+        if (flag(row.get("is_revoked"))) throw new AttendanceException("QR_REVOKED", "QR đã bị thu hồi.");
         if (!now.isBefore(toDateTime(row.get("expires_at")))) {
-            throw new AttendanceException("QR_EXPIRED", "Mã QR đã hết hạn. Hãy yêu cầu quản lý tạo mã mới.");
+            throw new AttendanceException("QR_EXPIRED", "QR đã hết hạn.");
         }
         if (!type.equals(row.get("session_type"))) {
             throw new AttendanceException("QR_WRONG_TYPE", CHECK_IN.equals(type)
-                    ? "Đây là mã QR check-out, không dùng để check-in."
-                    : "Đây là mã QR check-in, không dùng để check-out.");
+                    ? "Bạn đang dùng QR check-out để check-in."
+                    : "Bạn đang dùng QR check-in để check-out.");
         }
         return new QrSession(id(row.get("qr_session_id")), id(row.get("shift_id")), id(row.get("work_area_id")), (String) row.get("area_name"));
     }
@@ -306,7 +342,7 @@ public class AttendanceController {
 
         List<Map<String, Object>> sameShift = candidates.stream().filter(s -> id(s.get("shift_id")) == qr.shiftId()).toList();
         if (sameShift.isEmpty()) {
-            throw new AttendanceException("WRONG_SHIFT", "Mã QR không thuộc ca làm của bạn hôm nay.");
+            throw new AttendanceException("WRONG_SHIFT", "QR không thuộc ca làm của bạn.");
         }
         return sameShift.stream()
                 .filter(s -> id(s.get("work_area_id")) == qr.workAreaId())
@@ -317,28 +353,67 @@ public class AttendanceController {
     }
 
     /** Kiểm tra GPS khi ca yêu cầu; trả về khoảng cách tới khu vực (mét) nếu tính được. */
-    private Double checkLocation(Map<String, Object> schedule, AttendanceRequest body) {
-        boolean required = flag(schedule.get("require_location"));
-        if (body.latitude() == null || body.longitude() == null) {
-            if (required) throw new AttendanceException("LOCATION_REQUIRED", "Ca làm này yêu cầu bật vị trí GPS khi chấm công.");
-            return null;
+    /**
+     * GPS bắt buộc với mọi lần chấm công (không phụ thuộc cờ require_location của ca).
+     * Trả về khoảng cách (mét) từ nhân viên tới khu vực làm việc.
+     */
+    Double checkLocation(Map<String, Object> schedule, AttendanceRequest body, LocalDateTime now) {
+        Double lat = body.latitude();
+        Double lng = body.longitude();
+        if (lat == null || lng == null) {
+            throw new AttendanceException("LOCATION_REQUIRED",
+                    "Bắt buộc gửi vị trí GPS khi chấm công. Hãy bật GPS và cho phép ứng dụng truy cập vị trí.");
         }
+        if (!Double.isFinite(lat) || !Double.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            throw new AttendanceException("GPS_INVALID", "Tọa độ GPS không hợp lệ. Hãy lấy lại vị trí.");
+        }
+        if (Boolean.TRUE.equals(body.isMocked())) {
+            throw new AttendanceException("GPS_MOCKED",
+                    "Phát hiện vị trí GPS giả lập. Hãy tắt ứng dụng giả lập vị trí (Mock location) rồi thử lại.");
+        }
+        Double accuracy = body.accuracyMeters();
+        if (accuracy == null || !Double.isFinite(accuracy) || accuracy < 0) {
+            throw new AttendanceException("GPS_INACCURATE", "Không xác định được sai số GPS. Hãy lấy lại vị trí.");
+        }
+        if (accuracy > MAX_ACCURACY_METERS) {
+            throw new AttendanceException("GPS_INACCURATE",
+                    "Tín hiệu GPS chưa đủ chính xác (sai số %.0f m, cho phép tối đa %.0f m). Hãy ra chỗ thoáng và thử lại."
+                            .formatted(accuracy, MAX_ACCURACY_METERS));
+        }
+        checkGpsFreshness(body, now);
+
         Double areaLat = dbl(schedule.get("area_latitude"));
         Double areaLng = dbl(schedule.get("area_longitude"));
-        Double distance = areaLat == null || areaLng == null ? null
-                : Math.round(distanceMeters(body.latitude(), body.longitude(), areaLat, areaLng) * 10) / 10.0;
-        if (!required) return distance;
-
-        if (body.accuracyMeters() != null && body.accuracyMeters() > MAX_ACCURACY_METERS) {
-            throw new AttendanceException("GPS_INACCURATE",
-                    "Tín hiệu GPS chưa đủ chính xác (sai số %.0f m). Hãy ra chỗ thoáng và thử lại.".formatted(body.accuracyMeters()));
+        if (areaLat == null || areaLng == null) {
+            throw new AttendanceException("AREA_LOCATION_NOT_CONFIGURED",
+                    "Khu vực \"%s\" chưa được cấu hình tọa độ nên không thể xác thực vị trí. Hãy báo quản lý cập nhật tọa độ khu vực."
+                            .formatted(schedule.get("area_name")));
         }
+        double distance = Math.round(distanceMeters(lat, lng, areaLat, areaLng) * 10) / 10.0;
         int radius = intOr(schedule.get("radius_meters"), DEFAULT_RADIUS_METERS);
-        if (distance != null && distance > radius) {
+        if (distance > radius) {
             throw new AttendanceException("INVALID_LOCATION",
-                    "Bạn đang cách khu vực \"%s\" khoảng %.0f m (cho phép %d m).".formatted(schedule.get("area_name"), distance, radius));
+                    "Bạn đang cách khu vực \"%s\" khoảng %.0f m (cho phép %d m). Hãy đến đúng khu vực làm việc rồi chấm công."
+                            .formatted(schedule.get("area_name"), distance, radius));
         }
         return distance;
+    }
+
+    /** Chặn vị trí cũ: so thời điểm đo GPS với giờ gửi trên cùng điện thoại (tránh lệch đồng hồ với server). */
+    private void checkGpsFreshness(AttendanceRequest body, LocalDateTime now) {
+        LocalDateTime capturedAt = parseClientTime(body.locationCapturedAt());
+        if (capturedAt == null) {
+            throw new AttendanceException("GPS_STALE", "Thiếu thời gian lấy vị trí GPS. Hãy lấy lại vị trí rồi chấm công.");
+        }
+        LocalDateTime clientTime = parseClientTime(body.clientTime());
+        long ageSeconds = Duration.between(capturedAt, clientTime != null ? clientTime : now).getSeconds();
+        // Có clientTime: cùng đồng hồ điện thoại nên so chặt. Không có: so với giờ server, nới thêm phần lệch giờ.
+        long maxAge = clientTime != null ? MAX_GPS_AGE_SECONDS : MAX_GPS_AGE_SECONDS + MAX_CLOCK_SKEW_SECONDS;
+        long maxAhead = clientTime != null ? 10 : MAX_CLOCK_SKEW_SECONDS;
+        if (ageSeconds > maxAge || ageSeconds < -maxAhead) {
+            throw new AttendanceException("GPS_STALE",
+                    "Vị trí GPS đã cũ (đo cách đây quá %d giây). Hãy lấy lại vị trí mới rồi chấm công.".formatted(MAX_GPS_AGE_SECONDS));
+        }
     }
 
     /** Kiểm tra ảnh bằng chứng; trả về URL ảnh nếu có. */
@@ -443,6 +518,7 @@ public class AttendanceController {
     public record QrSessionRequest(@NotNull Long shiftId, @NotNull Long workAreaId, @NotBlank String sessionType,
             @NotNull Integer expiresInSeconds, Long issuedBy) { }
     public record QrSessionResponse(String token, LocalDateTime expiresAt, String sessionType) { }
+    public record RevokeQrRequest(String token, Long qrSessionId) { }
 
     /**
      * Dữ liệu chấm công app gửi lên. scheduleId/employeeId có thể bỏ trống (backend tự xác định theo QR
@@ -450,7 +526,9 @@ public class AttendanceController {
      */
     public record AttendanceRequest(Long scheduleId, Long employeeId, String qrToken,
             Double latitude, Double longitude, Double accuracyMeters,
-            String clientTime, String deviceInfo, EvidenceRequest evidence) { }
+            String clientTime, String deviceInfo, EvidenceRequest evidence,
+            /* Thời điểm điện thoại đo GPS (ISO-8601) và cờ GPS giả lập do thiết bị báo. */
+            String locationCapturedAt, Boolean isMocked) { }
     public record EvidenceRequest(String fileHash, String capturedAt) { }
 
     public record AttendanceResponse(Long attendanceId, Long scheduleId, String action, LocalDateTime occurredAt,

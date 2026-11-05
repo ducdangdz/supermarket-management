@@ -169,6 +169,10 @@ class AttendanceSubmission {
     'latitude': location?.latitude,
     'longitude': location?.longitude,
     'accuracyMeters': location?.accuracyMeters,
+    // Thời điểm đo GPS + cờ giả lập để backend chặn vị trí cũ / GPS giả.
+    if (location != null)
+      'locationCapturedAt': _isoWithOffset(location!.capturedAt),
+    if (location != null) 'isMocked': location!.isMocked,
     'clientTime': _isoWithOffset(clientTime),
     'deviceInfo': location?.isMocked == true
         ? '$deviceInfo · GPS giả lập'

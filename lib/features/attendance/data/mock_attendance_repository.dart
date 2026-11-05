@@ -20,7 +20,6 @@ enum SimulatedClock {
 class MockAttendanceScenario {
   bool noScheduleToday = false;
   bool requireEvidence = true;
-  bool requireLocation = true;
 
   /// Giả lập GPS ở cách khu vực làm việc ~2.2 km → INVALID_LOCATION.
   bool outsideRadius = false;
@@ -144,36 +143,44 @@ class MockAttendanceRepository implements AttendanceRepository {
       );
     }
 
-    // 3. GPS: có tọa độ, đủ chính xác, trong bán kính.
+    if (schedule == null) {
+      return reject('NO_SCHEDULE', 'Hôm nay bạn không có lịch làm.');
+    }
+
+    // 3. GPS bắt buộc: có tọa độ, không giả lập, đủ chính xác, trong bán kính.
     final location = submission.location;
-    double? distance;
-    if (schedule!.requireLocation) {
-      if (location == null)
-        return reject(
-          'LOCATION_REQUIRED',
-          'Ca làm này yêu cầu bật vị trí GPS khi chấm công.',
-        );
-      if (location.accuracyMeters > AttendanceRules.maxAccuracyMeters) {
-        return reject(
-          'GPS_INACCURATE',
-          'Tín hiệu GPS chưa đủ chính xác (sai số ${location.accuracyMeters.toStringAsFixed(0)} m).',
-        );
-      }
-      // Mock không có tọa độ siêu thị: tâm khu vực = vị trí hiện tại, hoặc lệch 0.02° (~2.2 km) khi bật "ngoài bán kính".
-      final centerLat = location.latitude + (scenario.outsideRadius ? 0.02 : 0);
-      distance = AttendanceRules.distanceMeters(
-        location.latitude,
-        location.longitude,
-        centerLat,
-        location.longitude,
+    if (location == null) {
+      return reject(
+        'LOCATION_REQUIRED',
+        'Bắt buộc có vị trí GPS khi chấm công. Hãy bật GPS và cấp quyền vị trí.',
       );
-      if (distance > AttendanceRules.defaultRadiusMeters) {
-        return reject(
-          'INVALID_LOCATION',
-          'Bạn đang cách khu vực "${schedule.areaName}" khoảng ${distance.toStringAsFixed(0)} m '
-              '(cho phép ${AttendanceRules.defaultRadiusMeters} m).',
-        );
-      }
+    }
+    if (location.isMocked) {
+      return reject(
+        'GPS_MOCKED',
+        'Phát hiện vị trí GPS giả lập. Hãy tắt ứng dụng giả lập vị trí rồi thử lại.',
+      );
+    }
+    if (location.accuracyMeters > AttendanceRules.maxAccuracyMeters) {
+      return reject(
+        'GPS_INACCURATE',
+        'Tín hiệu GPS chưa đủ chính xác (sai số ${location.accuracyMeters.toStringAsFixed(0)} m).',
+      );
+    }
+    // Mock không có tọa độ siêu thị: tâm khu vực = vị trí hiện tại, hoặc lệch 0.02° (~2.2 km) khi bật "ngoài bán kính".
+    final centerLat = location.latitude + (scenario.outsideRadius ? 0.02 : 0);
+    final distance = AttendanceRules.distanceMeters(
+      location.latitude,
+      location.longitude,
+      centerLat,
+      location.longitude,
+    );
+    if (distance > AttendanceRules.defaultRadiusMeters) {
+      return reject(
+        'INVALID_LOCATION',
+        'Bạn đang cách khu vực "${schedule.areaName}" khoảng ${distance.toStringAsFixed(0)} m '
+            '(cho phép ${AttendanceRules.defaultRadiusMeters} m).',
+      );
     }
 
     // 4. Ảnh bằng chứng.
@@ -276,7 +283,7 @@ class MockAttendanceRepository implements AttendanceRepository {
       endTime: source.endTime,
       areaName: source.location,
       requireQr: true,
-      requireLocation: scenario.requireLocation,
+      requireLocation: true,
       requireEvidence: scenario.requireEvidence,
       attendanceStatus: source.status == 'LATE'
           ? 'LATE'
