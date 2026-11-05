@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../features/auth/data/account_auth_api.dart';
+import '../services/device_identity_service.dart';
 import '../../models/employee.dart';
 import '../../models/work_schedule.dart';
 
@@ -21,6 +22,7 @@ class TeamApi {
     final req = http.Request(method, Uri.parse('$accountApiBaseUrl$path'));
     req.headers.addAll({
       'Authorization': 'Bearer $token',
+      'X-Device-Id': DeviceIdentityService.currentId,
       'Content-Type': 'application/json',
     });
     if (body != null) req.body = jsonEncode(body);

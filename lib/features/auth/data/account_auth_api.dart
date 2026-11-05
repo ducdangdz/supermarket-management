@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/services/device_identity_service.dart';
+
 String get accountApiBaseUrl {
   const configured = String.fromEnvironment('API_BASE_URL');
   if (configured.isNotEmpty) return configured.replaceFirst(RegExp(r'/+$'), '');
@@ -46,19 +48,28 @@ class AccountApiException implements Exception {
 }
 
 class AccountAuthApi {
-  AccountAuthApi({http.Client? client, String? baseUrl})
+  AccountAuthApi({
+    http.Client? client,
+    String? baseUrl,
+    Future<String> Function()? deviceIdProvider,
+  })
     : _client = client ?? http.Client(),
-      _baseUrl = baseUrl ?? accountApiBaseUrl;
+      _baseUrl = baseUrl ?? accountApiBaseUrl,
+      _deviceIdProvider = deviceIdProvider ?? DeviceIdentityService.getId;
   final http.Client _client;
   final String _baseUrl;
+  final Future<String> Function() _deviceIdProvider;
 
-  Future<AccountSession> login(String username, String password) async =>
-      AccountSession.fromJson(
-        await _post('/auth/login', {
-          'username': username.trim(),
-          'password': password,
-        }),
-      );
+  Future<AccountSession> login(String username, String password) async {
+    final deviceId = await _deviceIdProvider();
+    return AccountSession.fromJson(
+      await _post('/auth/login', {
+        'username': username.trim(),
+        'password': password,
+        'deviceId': deviceId,
+      }),
+    );
+  }
 
   Future<String> register(
     String fullName,
@@ -72,15 +83,16 @@ class AccountAuthApi {
     }),
   );
 
-  Future<AccountSession> verifyRegistration(
-    String challengeId,
-    String code,
-  ) async => AccountSession.fromJson(
-    await _post('/auth/verify-registration', {
-      'challengeId': challengeId,
-      'code': code,
-    }),
-  );
+  Future<AccountSession> verifyRegistration(String challengeId, String code) async {
+    final deviceId = await _deviceIdProvider();
+    return AccountSession.fromJson(
+      await _post('/auth/verify-registration', {
+        'challengeId': challengeId,
+        'code': code,
+        'deviceId': deviceId,
+      }),
+    );
+  }
 
   Future<String> forgotPassword(String email) async =>
       _challenge(await _post('/auth/forgot-password', {'email': email.trim()}));
@@ -116,12 +128,14 @@ class AccountAuthApi {
     String? token,
   }) async {
     try {
+      final deviceId = token == null ? null : await _deviceIdProvider();
       final response = await _client
           .post(
             Uri.parse('$_baseUrl$path'),
             headers: {
               'Content-Type': 'application/json',
               if (token != null) 'Authorization': 'Bearer $token',
+              if (deviceId != null) 'X-Device-Id': deviceId,
             },
             body: jsonEncode(body),
           )

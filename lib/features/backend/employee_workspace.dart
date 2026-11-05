@@ -1,4 +1,6 @@
 ﻿import '../../core/widgets/app_workspace.dart';
+import '../../core/widgets/app_workspace.dart';
+import '../../core/services/device_identity_service.dart';
 import 'dart:convert';
 
 import 'location/location_service.dart';
@@ -39,6 +41,7 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer ${widget.idToken}',
+    'X-Device-Id': DeviceIdentityService.currentId,
     'Content-Type': 'application/json',
   };
   String get _base {
@@ -97,31 +100,18 @@ class _EmployeeWorkspaceState extends State<EmployeeWorkspace> {
     );
     if (token == null || token.trim().isEmpty) return;
     try {
-      LocationSample? location;
-      try {
-        location = await getCurrentLocation();
-      } on Object catch (error) {
-        if (schedule['requireLocation'] == true) rethrow;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Không lấy được GPS: ${_message(error)}. Hệ thống vẫn tiếp tục vì ca này không bắt buộc GPS.',
-              ),
-            ),
-          );
-        }
-      }
+      // GPS bắt buộc: luôn đo vị trí mới ngay lúc chấm công, không dùng vị trí cũ.
+      // GPS tắt / từ chối quyền / sai số lớn / giả lập → GpsException với thông báo tiếng Việt.
+      final location = await GpsService.instance.getFreshLocation();
       final response = await http.post(
         Uri.parse('$_base/attendance/${checkIn ? 'check-in' : 'check-out'}'),
         headers: _headers,
         body: jsonEncode({
           'scheduleId': schedule['scheduleId'],
           'employeeId': widget.employeeId,
-          'qrToken': token.trim(),
-          'latitude': location?.latitude,
-          'longitude': location?.longitude,
-          'accuracyMeters': location?.accuracyMeters,
+          'qrToken': token,
+          ...location.toJson(),
+          'clientTime': isoWithOffset(DateTime.now()),
         }),
       );
       _ensureOk(response);

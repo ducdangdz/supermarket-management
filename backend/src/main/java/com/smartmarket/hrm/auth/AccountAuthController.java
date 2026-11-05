@@ -18,7 +18,7 @@ public class AccountAuthController {
 
     @PostMapping("/login")
     public AccountAuthService.LoginResponse login(@Valid @RequestBody LoginRequest body) {
-        return accounts.login(body.username(), body.password());
+        return accounts.login(body.username(), body.password(), body.deviceId());
     }
     @PostMapping("/register")
     public AccountAuthService.ChallengeResponse register(@Valid @RequestBody RegisterRequest body) {
@@ -26,7 +26,7 @@ public class AccountAuthController {
     }
     @PostMapping("/verify-registration")
     public AccountAuthService.LoginResponse verifyRegistration(@Valid @RequestBody VerifyRequest body) {
-        return accounts.verifyRegistration(body.challengeId(), body.code());
+        return accounts.verifyRegistration(body.challengeId(), body.code(), body.deviceId());
     }
     @PostMapping("/forgot-password")
     public AccountAuthService.ChallengeResponse forgotPassword(@Valid @RequestBody ForgotRequest body) {
@@ -48,13 +48,15 @@ public class AccountAuthController {
     }
 
     public record LoginRequest(@NotBlank @Size(max = 150) String username,
-            @NotBlank @Size(max = 72) String password) { }
+            @NotBlank @Size(max = 72) String password,
+            @NotBlank @Pattern(regexp = "[a-f0-9]{32}") String deviceId) { }
     public record RegisterRequest(@NotBlank @Size(max = 150) String fullName,
             @NotBlank @Email @Size(max = 150) String email,
             @NotBlank @Size(min = 8, max = 72) String password) { }
     public record ForgotRequest(@NotBlank @Email @Size(max = 150) String email) { }
     public record VerifyRequest(@NotBlank @Size(max = 36) String challengeId,
-            @NotBlank @Pattern(regexp = "[0-9]{6}") String code) { }
+            @NotBlank @Pattern(regexp = "[0-9]{6}") String code,
+            @NotBlank @Pattern(regexp = "[a-f0-9]{32}") String deviceId) { }
     public record ResetRequest(@NotBlank @Size(max = 36) String challengeId,
             @NotBlank @Pattern(regexp = "[0-9]{6}") String code,
             @NotBlank @Size(min = 8, max = 72) String password) { }

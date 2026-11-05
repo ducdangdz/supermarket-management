@@ -115,17 +115,24 @@ class AttendanceRules {
         'Hãy quét mã QR tại khu vực làm việc.',
       );
     }
-    if (schedule.requireLocation && location == null) {
+    // GPS bắt buộc với mọi ca khi nhân viên chấm công (không phụ thuộc require_location).
+    if (location == null) {
       return const AttendanceViolation(
         'LOCATION_REQUIRED',
-        'Ca làm này yêu cầu vị trí GPS. Hãy bật và cấp quyền vị trí.',
+        'Bắt buộc có vị trí GPS khi chấm công. Hãy bật GPS và cấp quyền vị trí.',
       );
     }
-    if (schedule.requireLocation &&
-        location!.accuracyMeters > maxAccuracyMeters) {
+    if (location.isMocked) {
+      return const AttendanceViolation(
+        'GPS_MOCKED',
+        'Phát hiện vị trí GPS giả lập. Hãy tắt ứng dụng giả lập vị trí rồi thử lại.',
+      );
+    }
+    if (location.accuracyMeters > maxAccuracyMeters) {
       return AttendanceViolation(
         'GPS_INACCURATE',
-        'Tín hiệu GPS chưa đủ chính xác (sai số ${location.accuracyMeters.toStringAsFixed(0)} m). Hãy lấy lại vị trí.',
+        'Tín hiệu GPS chưa đủ chính xác (sai số ${location.accuracyMeters.toStringAsFixed(0)} m, '
+            'tối đa ${maxAccuracyMeters.toStringAsFixed(0)} m). Hãy lấy lại vị trí.',
       );
     }
     if (schedule.requireEvidence && evidence == null) {
@@ -160,6 +167,22 @@ class AttendanceRules {
         return 'Thiếu vị trí GPS';
       case 'GPS_INACCURATE':
         return 'GPS không chính xác';
+      case 'GPS_MOCKED':
+        return 'GPS giả lập';
+      case 'GPS_STALE':
+        return 'Vị trí GPS đã cũ';
+      case 'GPS_DISABLED':
+        return 'GPS đang tắt';
+      case 'GPS_PERMISSION_DENIED':
+      case 'GPS_PERMISSION_DENIED_FOREVER':
+        return 'Chưa cấp quyền vị trí';
+      case 'GPS_TIMEOUT':
+      case 'GPS_UNAVAILABLE':
+        return 'Không lấy được GPS';
+      case 'GPS_INVALID':
+        return 'Tọa độ GPS không hợp lệ';
+      case 'AREA_LOCATION_NOT_CONFIGURED':
+        return 'Khu vực chưa có tọa độ';
       case 'CHECK_IN_TOO_EARLY':
         return 'Chưa đến giờ check-in';
       case 'ALREADY_CHECKED_IN':

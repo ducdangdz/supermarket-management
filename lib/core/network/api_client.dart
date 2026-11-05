@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
+import '../services/device_identity_service.dart';
 
 class ApiClient {
   ApiClient._();
@@ -41,6 +42,7 @@ class _AuthInterceptor extends Interceptor {
     final token = await StorageService.getString(AppConstants.keyAuthToken);
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
+      options.headers['X-Device-Id'] = DeviceIdentityService.currentId;
     }
     handler.next(options);
   }

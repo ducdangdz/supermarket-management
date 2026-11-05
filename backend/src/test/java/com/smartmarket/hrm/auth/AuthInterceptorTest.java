@@ -9,6 +9,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.server.ResponseStatusException;
 
 class AuthInterceptorTest {
+    private static final String DEVICE_ID = "0123456789abcdef0123456789abcdef";
     private final GoogleTokenService google = mock(GoogleTokenService.class);
     private final AccountAuthService accounts = mock(AccountAuthService.class);
     private final AuthInterceptor interceptor = new AuthInterceptor(google, new AccessControl(), accounts);
@@ -23,24 +24,35 @@ class AuthInterceptorTest {
         verifyNoInteractions(google, accounts);
     }
     @Test void localSessionUsesDatabaseIdentityAndDoesNotCallGoogle() {
-        when(accounts.authenticate("smh_valid")).thenReturn(employee);
+        when(accounts.authenticate("smh_valid", DEVICE_ID)).thenReturn(employee);
         var request = new MockHttpServletRequest("GET", "/api/auth/me");
         request.addHeader("Authorization", "Bearer smh_valid");
+        request.addHeader("X-Device-Id", DEVICE_ID);
         assertTrue(interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
         assertEquals(employee, request.getAttribute(AccessControl.CURRENT_USER));
         verifyNoInteractions(google);
     }
+    @Test void copiedLocalTokenWithoutItsDeviceIdIsRejected() {
+        when(accounts.authenticate("smh_valid", null)).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        var request = new MockHttpServletRequest("GET", "/api/auth/me");
+        request.addHeader("Authorization", "Bearer smh_valid");
+        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
+                () -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).getStatusCode());
+        verifyNoInteractions(google, accounts);
+    }
     @Test void newlyRegisteredEmployeeCannotAccessManagementApi() {
-        when(accounts.authenticate("smh_valid")).thenReturn(employee);
+        when(accounts.authenticate("smh_valid", DEVICE_ID)).thenReturn(employee);
         var request = new MockHttpServletRequest("GET", "/api/management/shifts");
         request.addHeader("Authorization", "Bearer smh_valid");
+        request.addHeader("X-Device-Id", DEVICE_ID);
         assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
                 () -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object())).getStatusCode());
     }
     @Test void forgedLocalTokenCannotFallBackToGoogle() {
-        when(accounts.authenticate("smh_forged")).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        when(accounts.authenticate("smh_forged", DEVICE_ID)).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         var request = new MockHttpServletRequest("GET", "/api/auth/me");
         request.addHeader("Authorization", "Bearer smh_forged");
+        request.addHeader("X-Device-Id", DEVICE_ID);
         assertThrows(ResponseStatusException.class, () -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()));
         verifyNoInteractions(google);
     }

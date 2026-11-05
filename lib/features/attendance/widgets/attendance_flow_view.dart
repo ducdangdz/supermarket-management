@@ -156,7 +156,7 @@ class _ScheduleSection extends StatelessWidget {
               runSpacing: 6,
               children: [
                 _requirementChip('QR', schedule.requireQr),
-                _requirementChip('GPS', schedule.requireLocation),
+                _requirementChip('GPS', true),
                 _requirementChip('Ảnh bằng chứng', schedule.requireEvidence),
               ],
             ),
@@ -258,7 +258,6 @@ class _LocationStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final result = ctrl.locationResult;
     final location = result?.location;
-    final required = ctrl.selectedSchedule?.requireLocation ?? false;
 
     Widget content;
     if (ctrl.isLocating) {
@@ -284,7 +283,7 @@ class _LocationStep extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
-                '⚠ Thiết bị đang dùng vị trí giả lập, thông tin này sẽ được gửi kèm.',
+                '⚠ Phát hiện vị trí giả lập. Hãy tắt ứng dụng giả lập vị trí, hệ thống sẽ từ chối chấm công.',
                 style: TextStyle(color: AppTheme.warning, fontSize: 12),
               ),
             ),
@@ -309,10 +308,10 @@ class _LocationStep extends StatelessWidget {
                     failure == LocationFailure.permissionDeniedForever
                 ? Icons.location_disabled
                 : Icons.gps_off,
-            color: required ? AppTheme.error : AppTheme.warning,
+            color: AppTheme.error,
             text:
-                '${result?.message ?? 'Chưa có vị trí.'}'
-                '${required ? '' : '\nCa này không bắt buộc GPS nên vẫn có thể tiếp tục.'}',
+                '${result?.message ?? 'Chưa có vị trí.'}\n'
+                'Không thể chấm công khi chưa có vị trí GPS.',
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -333,7 +332,7 @@ class _LocationStep extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: ctrl.locationService.openLocationSettings,
                   icon: const Icon(Icons.settings, size: 18),
-                  label: const Text('Bật GPS'),
+                  label: const Text('Mở cài đặt vị trí'),
                 ),
             ],
           ),
@@ -345,7 +344,7 @@ class _LocationStep extends StatelessWidget {
       index: 2,
       title: 'Vị trí GPS',
       done: location != null,
-      required: required,
+      required: true,
       child: content,
     );
   }
@@ -572,12 +571,6 @@ class _MockScenarioPanelState extends State<_MockScenarioPanel> {
             title: const Text('Ca yêu cầu ảnh bằng chứng'),
             value: s.requireEvidence,
             onChanged: (v) => _update(() => s.requireEvidence = v),
-          ),
-          SwitchListTile(
-            dense: true,
-            title: const Text('Ca yêu cầu GPS'),
-            value: s.requireLocation,
-            onChanged: (v) => _update(() => s.requireLocation = v),
           ),
           SwitchListTile(
             dense: true,

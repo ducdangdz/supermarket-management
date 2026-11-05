@@ -44,7 +44,9 @@ public class AccountAuthService {
         this.mail = mail;
     }
 
-    public LoginResponse login(String username, String password) {
+    @Transactional
+    public LoginResponse login(String username, String password, String deviceId) {
+        validateDeviceId(deviceId);
         String key = username.trim().toLowerCase(Locale.ROOT);
         LoginFailures attempts = failures.get(key);
         if (attempts != null && attempts.until().isAfter(Instant.now()) && attempts.count() >= 5) {
@@ -74,7 +76,7 @@ public class AccountAuthService {
             throw error(HttpStatus.UNAUTHORIZED, "Tài khoản hoặc mật khẩu không chính xác.");
         }
         failures.remove(key);
-        return issueSession(accounts.getFirst().user());
+        return issueSession(accounts.getFirst().user(), deviceId);
     }
 
     @Transactional
@@ -117,7 +119,8 @@ public class AccountAuthService {
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
-    public LoginResponse verifyRegistration(String id, String code) {
+    public LoginResponse verifyRegistration(String id, String code, String deviceId) {
+        validateDeviceId(deviceId);
         Challenge challenge = verifyCode(id, code, "REGISTER");
         if (countEmail(challenge.email()) != 0) throw error(HttpStatus.CONFLICT,
                 "Email đã có tài khoản. Hãy đăng nhập hoặc đặt lại mật khẩu.");
@@ -129,7 +132,7 @@ public class AccountAuthService {
         if (inserted != 1) throw new IllegalStateException("Chưa cấu hình vai trò EMPLOYEE trong cơ sở dữ liệu.");
         jdbc.update("UPDATE dbo.auth_challenges SET consumed = 1 WHERE challenge_id = ?", id);
         Account account = jdbc.query(USER_COLUMNS + " WHERE e.email = ?", ACCOUNT, challenge.email()).getFirst();
-        return issueSession(account.user());
+        return issueSession(account.user(), deviceId);
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
@@ -159,22 +162,29 @@ public class AccountAuthService {
         return challenge;
     }
 
-    private LoginResponse issueSession(CurrentUser user) {
+    /** Employee accounts have one active, device-bound session; staff accounts do not. */
+    @Transactional
+    public LoginResponse issueSession(CurrentUser user, String deviceId) {
+        if (isEmployee(user)) validateDeviceId(deviceId);
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String token = "smh_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         jdbc.update("DELETE FROM dbo.auth_sessions WHERE expires_at <= SYSUTCDATETIME()");
-        jdbc.update("INSERT INTO dbo.auth_sessions(token_hash, employee_id, expires_at) VALUES (?, ?, DATEADD(HOUR, 8, SYSUTCDATETIME()))",
-                tokenHash(token), user.employeeId());
+        // Only employee accounts are limited to one active device.
+        if (isEmployee(user)) jdbc.update("DELETE FROM dbo.auth_sessions WHERE employee_id = ?", user.employeeId());
+        jdbc.update("INSERT INTO dbo.auth_sessions(token_hash, employee_id, device_id, expires_at, last_seen_at) VALUES (?, ?, ?, DATEADD(HOUR, 8, SYSUTCDATETIME()), SYSUTCDATETIME())",
+                tokenHash(token), user.employeeId(), deviceId);
         return new LoginResponse(token, user);
     }
 
-    public CurrentUser authenticate(String token) {
+    public CurrentUser authenticate(String token, String deviceId) {
         List<Account> accounts = jdbc.query(USER_COLUMNS + """
                 JOIN dbo.auth_sessions s ON s.employee_id = e.employee_id
                 WHERE s.token_hash = ? AND s.expires_at > SYSUTCDATETIME() AND e.employment_status = 'ACTIVE'
-                """, ACCOUNT, tokenHash(token));
+                AND (r.role_code <> 'EMPLOYEE' OR s.device_id = ?)
+                """, ACCOUNT, tokenHash(token), deviceId);
         if (accounts.isEmpty()) throw error(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        jdbc.update("UPDATE dbo.auth_sessions SET last_seen_at = SYSUTCDATETIME() WHERE token_hash = ?", tokenHash(token));
         return accounts.getFirst().user();
     }
 
@@ -192,6 +202,12 @@ public class AccountAuthService {
             throw error(HttpStatus.BAD_REQUEST, "Mật khẩu cần ít nhất 8 ký tự và không quá 72 byte UTF-8.");
         }
     }
+    static void validateDeviceId(String deviceId) {
+        if (deviceId == null || !deviceId.matches("[a-f0-9]{32}")) {
+            throw error(HttpStatus.BAD_REQUEST, "Thiết bị đăng nhập không hợp lệ. Vui lòng cập nhật ứng dụng và thử lại.");
+        }
+    }
+    private static boolean isEmployee(CurrentUser user) { return "EMPLOYEE".equals(user.roleCode()); }
     static String tokenHash(String token) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8))); }
         catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }

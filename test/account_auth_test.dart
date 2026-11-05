@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supermarket_hrm/core/services/storage_service.dart';
 import 'package:supermarket_hrm/core/theme/app_theme.dart';
 import 'package:supermarket_hrm/features/auth/data/account_auth_api.dart';
 import 'package:supermarket_hrm/features/auth/presentation/account_access_screen.dart';
@@ -50,6 +52,11 @@ Future<void> click(WidgetTester tester, String label) async {
 }
 
 void main() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await StorageService.init();
+  });
+
   test(
     'Credential API preserves password whitespace and reads real session',
     () async {
@@ -57,10 +64,10 @@ void main() {
         baseUrl: 'http://test/api',
         client: MockClient((request) async {
           expect(request.url.path, '/api/auth/login');
-          expect(jsonDecode(request.body), {
-            'username': 'new@example.com',
-            'password': ' Password123! ',
-          });
+          final body = Map<String, dynamic>.from(jsonDecode(request.body));
+          expect(body['username'], 'new@example.com');
+          expect(body['password'], ' Password123! ');
+          expect(body['deviceId'], matches(RegExp(r'^[a-f0-9]{32}$')));
           return jsonResponse(loginResponse);
         }),
       );
@@ -136,10 +143,10 @@ void main() {
             });
             return jsonResponse({'challengeId': challenge, 'message': 'sent'});
           }
-          expect(jsonDecode(request.body), {
-            'challengeId': challenge,
-            'code': '123456',
-          });
+          final body = Map<String, dynamic>.from(jsonDecode(request.body));
+          expect(body['challengeId'], challenge);
+          expect(body['code'], '123456');
+          expect(body['deviceId'], matches(RegExp(r'^[a-f0-9]{32}$')));
           return jsonResponse(loginResponse);
         }),
       );

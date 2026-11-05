@@ -1,7 +1,4 @@
-import 'dart:async';
-
-import 'package:geolocator/geolocator.dart';
-
+import '../../backend/location/location_service.dart';
 import '../models/attendance_models.dart';
 
 /// Lý do không lấy được vị trí, để UI hiển thị rõ ràng và gợi ý cách xử lý.
@@ -17,27 +14,43 @@ enum LocationFailure {
 
   /// Quá thời gian chờ tín hiệu GPS.
   timeout,
+
+  /// Sai số GPS quá lớn.
+  inaccurate,
+
+  /// Thiết bị báo vị trí giả lập.
+  mocked,
+
+  /// Thiết bị chỉ trả về vị trí cũ.
+  stale,
   unknown,
 }
 
-/// Kết quả lấy vị trí: có [location] hoặc có [failure].
+/// Kết quả lấy vị trí: có [location] hoặc có [failure] kèm mã lỗi GPS.
 class LocationResult {
   const LocationResult.success(GpsLocation this.location)
     : failure = null,
-      message = null;
+      message = null,
+      code = null;
 
-  const LocationResult.failure(LocationFailure this.failure, this.message)
-    : location = null;
+  const LocationResult.failure(
+    LocationFailure this.failure,
+    this.message, {
+    this.code = 'LOCATION_REQUIRED',
+  }) : location = null;
 
   final GpsLocation? location;
   final LocationFailure? failure;
   final String? message;
 
+  /// Mã lỗi giống backend: GPS_DISABLED, GPS_PERMISSION_DENIED, GPS_MOCKED...
+  final String? code;
+
   bool get isSuccess => location != null;
 }
 
 abstract class LocationService {
-  /// Xin quyền (nếu cần) và lấy vị trí hiện tại: latitude, longitude, accuracy.
+  /// Xin quyền (nếu cần) và đo vị trí MỚI: latitude, longitude, accuracy, thời gian đo.
   Future<LocationResult> getCurrentLocation();
 
   Future<void> openAppSettings();
@@ -45,80 +58,57 @@ abstract class LocationService {
   Future<void> openLocationSettings();
 }
 
-/// Lấy GPS bằng package geolocator (Android, iOS, web).
+/// Dùng [GpsService] chung của app (lib/features/backend/location) để mọi màn hình
+/// chấm công cùng một logic GPS bắt buộc.
 class GeolocatorLocationService implements LocationService {
-  const GeolocatorLocationService({this.timeout = const Duration(seconds: 15)});
+  const GeolocatorLocationService({this.gpsService});
 
-  final Duration timeout;
+  final GpsService? gpsService;
+
+  GpsService get _gps => gpsService ?? GpsService.instance;
 
   @override
   Future<LocationResult> getCurrentLocation() async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        return const LocationResult.failure(
-          LocationFailure.serviceDisabled,
-          'GPS trên thiết bị đang tắt. Hãy bật dịch vụ vị trí rồi thử lại.',
-        );
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied) {
-        return const LocationResult.failure(
-          LocationFailure.permissionDenied,
-          'Bạn đã từ chối quyền vị trí. Ứng dụng cần vị trí để xác nhận bạn đang ở siêu thị.',
-        );
-      }
-      if (permission == LocationPermission.deniedForever) {
-        return const LocationResult.failure(
-          LocationFailure.permissionDeniedForever,
-          'Quyền vị trí đã bị từ chối vĩnh viễn. Hãy mở Cài đặt → Quyền → Vị trí để cho phép.',
-        );
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: timeout,
-        ),
-      );
+      final sample = await _gps.getFreshLocation();
       return LocationResult.success(
         GpsLocation(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracyMeters: position.accuracy,
-          capturedAt: DateTime.now(),
-          isMocked: position.isMocked,
+          latitude: sample.latitude,
+          longitude: sample.longitude,
+          accuracyMeters: sample.accuracyMeters,
+          capturedAt: sample.capturedAt,
+          isMocked: sample.isMocked,
         ),
       );
-    } on TimeoutException {
-      return const LocationResult.failure(
-        LocationFailure.timeout,
-        'Không nhận được tín hiệu GPS. Hãy ra chỗ thoáng và thử lại.',
+    } on GpsException catch (e) {
+      return LocationResult.failure(
+        _failureFor(e.code),
+        e.message,
+        code: e.code,
       );
-    } catch (error) {
+    } catch (e) {
       return LocationResult.failure(
         LocationFailure.unknown,
-        'Không lấy được vị trí: $error',
+        'Không lấy được vị trí: $e',
+        code: 'GPS_UNAVAILABLE',
       );
     }
   }
 
-  @override
-  Future<void> openAppSettings() async {
-    try {
-      await Geolocator.openAppSettings();
-    } catch (_) {
-      // Web không hỗ trợ mở cài đặt.
-    }
-  }
+  static LocationFailure _failureFor(String code) => switch (code) {
+    'GPS_DISABLED' => LocationFailure.serviceDisabled,
+    'GPS_PERMISSION_DENIED' => LocationFailure.permissionDenied,
+    'GPS_PERMISSION_DENIED_FOREVER' => LocationFailure.permissionDeniedForever,
+    'GPS_TIMEOUT' => LocationFailure.timeout,
+    'GPS_INACCURATE' => LocationFailure.inaccurate,
+    'GPS_MOCKED' => LocationFailure.mocked,
+    'GPS_STALE' => LocationFailure.stale,
+    _ => LocationFailure.unknown,
+  };
 
   @override
-  Future<void> openLocationSettings() async {
-    try {
-      await Geolocator.openLocationSettings();
-    } catch (_) {}
-  }
+  Future<void> openAppSettings() => _gps.openAppSettings();
+
+  @override
+  Future<void> openLocationSettings() => _gps.openLocationSettings();
 }
